@@ -69,7 +69,7 @@ export default async function Painel() {
             href="https://portaldeservicos.pdpj.jus.br/consulta"
             target="_blank"
             rel="noopener"
-            className="btn"
+            className="btn primary"
             title="Abre o jus.br numa aba nova. Depois de logar, peça ao Claude: /sincronizar-jusbr"
           >
             Sincronizar com jus.br

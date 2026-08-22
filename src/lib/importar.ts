@@ -59,10 +59,25 @@ export async function importarPdf(input: {
     avisos.push("Leitura por IA desativada (sem ANTHROPIC_API_KEY): só números de processo foram extraídos.");
   }
 
-  const cnjs = new Set<string>(encontrarCnjs(texto));
-  for (const n of analise?.numeros_processo ?? []) {
-    const d = somenteDigitos(n);
-    if (d.length === 20 && validarCnj(d)) cnjs.add(d);
+  // A IA lê o documento inteiro e sabe distinguir "processo tratado aqui" de números
+  // citados como jurisprudência/precedente — usamos só o dela quando disponível. A
+  // regex bruta em cima do texto inteiro (encontrarCnjs) pega QUALQUER CNJ válido no
+  // texto, incluindo citações de outros processos em petições longas — só serve como
+  // fallback (com aviso) quando a IA não rodou.
+  let cnjs: Set<string>;
+  if (analise) {
+    cnjs = new Set<string>();
+    for (const n of analise.numeros_processo) {
+      const d = somenteDigitos(n);
+      if (d.length === 20 && validarCnj(d)) cnjs.add(d);
+    }
+  } else {
+    cnjs = new Set<string>(encontrarCnjs(texto));
+    if (cnjs.size > 1) {
+      avisos.push(
+        `Sem leitura por IA, ${cnjs.size} números de processo foram encontrados no texto por busca simples — documentos longos podem citar processos de terceiros como jurisprudência. Confira antes de confiar nos vínculos.`,
+      );
+    }
   }
 
   let documento_id = input.documento_id || null;

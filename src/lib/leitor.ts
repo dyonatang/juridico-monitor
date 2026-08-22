@@ -72,6 +72,7 @@ const INSTRUCOES = `Você é assistente jurídico de um grupo empresarial famili
 Leia o documento anexado (peça processual, ofício, citação, decisão, contrato ou documento digitalizado) e extraia os dados pedidos.
 Regras:
 - Números de processo: só no padrão CNJ (7 dígitos, hífen, 2 dígitos, ponto, ano, ponto, 1 dígito, ponto, 2 dígitos, ponto, 4 dígitos). Não invente; se não houver, retorne lista vazia.
+- IMPORTANTE: em "numeros_processo", inclua APENAS o(s) número(s) do processo a que este documento pertence (o processo em cujos autos a peça foi juntada). Documentos longos (petições, contestações, recursos) costumam citar dezenas de OUTROS números de processo como jurisprudência/precedente ("vide TJES, AI nº ...", "no julgamento do REsp ..."), ou até números de processos de terceiros mencionados de passagem — NUNCA inclua esses. Na dúvida se um número é do próprio processo ou uma citação, não inclua.
 - Partes: nomes como aparecem; CPF/CNPJ apenas se constar no documento.
 - Resumo em português claro, para um empresário sem formação jurídica. Diga o que foi decidido/pedido e o que muda para a empresa ou pessoa do grupo.
 - Se houver prazo para resposta, defesa, pagamento, perícia ou comparecimento, destaque em acao_recomendada com a data.`;
@@ -82,7 +83,7 @@ Regras:
  */
 export async function analisarComClaude(entrada: { pdf?: Buffer; texto?: string; contexto?: string }): Promise<Analise> {
   const client = new Anthropic({ timeout: 5 * 60 * 1000 });
-  const conteudo: Anthropic.Beta.BetaContentBlockParam[] = [];
+  const conteudo: Anthropic.Messages.ContentBlockParam[] = [];
   if (entrada.pdf) {
     conteudo.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: entrada.pdf.toString("base64") } });
   } else if (entrada.texto) {
@@ -92,11 +93,9 @@ export async function analisarComClaude(entrada: { pdf?: Buffer; texto?: string;
   }
   conteudo.push({ type: "text", text: `${entrada.contexto ? entrada.contexto + "\n" : ""}Extraia os dados deste documento conforme o formato.` });
 
-  const response = await client.beta.messages.create({
+  const response = await client.messages.create({
     model: process.env.ANTHROPIC_MODEL || "claude-opus-5",
     max_tokens: 8000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
     system: INSTRUCOES,
     messages: [{ role: "user", content: conteudo }],
     output_config: { format: zodOutputFormat(AnaliseSchema) },
