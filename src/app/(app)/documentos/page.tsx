@@ -3,6 +3,7 @@ import * as store from "@/lib/store";
 import { formatarDocumento, fmtDataHora } from "@/lib/format";
 import { provedorPremium } from "@/lib/providers";
 import { ActionForm, Card, Input, Select, Pill, SubmitButton } from "@/components/ui";
+import { RowLink } from "@/components/row-link";
 import { alternarAtivoAction, criarDocumentoAction, excluirAction, reativarMonitoramentoAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,10 @@ export default async function Documentos() {
   return (
     <>
       <div className="topbar">
-        <div><h1>CPFs e CNPJs monitorados</h1><p>Qualquer processo novo em que um destes documentos apareça vira alerta</p></div>
+        <div>
+          <h1>CPFs e CNPJs monitorados</h1>
+          <p>Qualquer processo novo em que um destes documentos apareça vira alerta. Clique num documento para ver os processos dele.</p>
+        </div>
       </div>
 
       {!premium && (
@@ -36,7 +40,11 @@ export default async function Documentos() {
           <Input label="Nome / titular *" name="nome" required placeholder="Empresa ou pessoa" />
           <Select label="Empresa vinculada" name="empresa_id" defaultValue="">
             <option value="">— família / nenhuma —</option>
-            {empresas.map((e) => <option key={e.id} value={e.id}>{e.apelido || e.nome}</option>)}
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.apelido || e.nome}
+              </option>
+            ))}
           </Select>
           <Input label="Observação" name="observacao" wide placeholder="ex.: sócio, cônjuge, holding…" />
         </ActionForm>
@@ -45,31 +53,59 @@ export default async function Documentos() {
       <Card title="Monitorados" hint={String(docs.length)}>
         <div className="tablewrap">
           <table>
-            <thead><tr><th>Nome</th><th>Documento</th><th>Empresa</th><th className="right">Processos</th><th>Monitoramento</th><th>Último check</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Documento</th>
+                <th>Empresa</th>
+                <th className="right">Processos</th>
+                <th>Monitoramento</th>
+                <th>Cadastrado em</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody>
               {docs.map((d) => (
-                <tr key={d.id} className={d.ativo ? "" : "off"}>
-                  <td><b>{d.nome}</b>{d.observacao && <div className="sub">{d.observacao}</div>}</td>
-                  <td><Pill>{d.tipo}</Pill> <span className="mono">{formatarDocumento(d.tipo, d.numero)}</span></td>
+                <RowLink key={d.id} href={`/documentos/${d.id}`} className={d.ativo ? "" : "off"}>
+                  <td>
+                    <Link href={`/documentos/${d.id}`} className="link">
+                      {d.nome}
+                    </Link>
+                    {d.observacao && <div className="sub">{d.observacao}</div>}
+                  </td>
+                  <td>
+                    <Pill>{d.tipo}</Pill> <span className="mono">{formatarDocumento(d.tipo, d.numero)}</span>
+                  </td>
                   <td>{d.empresa_id ? nomeEmpresa.get(d.empresa_id) ?? "—" : "—"}</td>
                   <td className="right">{nProc(d.id)}</td>
                   <td>
                     {d.provider_tracking_id ? <Pill tone="ok">{d.provider} ✓</Pill> : d.ultimo_erro ? <Pill tone="warn">manual</Pill> : <Pill>pendente</Pill>}
-                    {d.ultimo_erro && <div className="sub" style={{ maxWidth: 280, color: "var(--warn)" }}>{d.ultimo_erro}</div>}
                   </td>
-                  <td className="sub">{fmtDataHora(d.ultimo_check)}</td>
+                  <td className="sub">{fmtDataHora(d.created_at)}</td>
                   <td>
                     <div className="actions-row">
                       {premium && !d.provider_tracking_id && (
-                        <form action={reativarMonitoramentoAction.bind(null, d.id)}><SubmitButton tone="sm">Ativar</SubmitButton></form>
+                        <form action={reativarMonitoramentoAction.bind(null, d.id)}>
+                          <SubmitButton tone="sm">Ativar</SubmitButton>
+                        </form>
                       )}
-                      <form action={alternarAtivoAction.bind(null, "documentos", d.id, !d.ativo)}><SubmitButton tone="sm">{d.ativo ? "Pausar" : "Retomar"}</SubmitButton></form>
-                      <form action={excluirAction.bind(null, "documentos", d.id)}><SubmitButton tone="sm-danger">Excluir</SubmitButton></form>
+                      <form action={alternarAtivoAction.bind(null, "documentos", d.id, !d.ativo)}>
+                        <SubmitButton tone="sm">{d.ativo ? "Pausar" : "Retomar"}</SubmitButton>
+                      </form>
+                      <form action={excluirAction.bind(null, "documentos", d.id)}>
+                        <SubmitButton tone="sm-danger">Excluir</SubmitButton>
+                      </form>
                     </div>
                   </td>
-                </tr>
+                </RowLink>
               ))}
-              {docs.length === 0 && <tr><td colSpan={7} className="empty">Nenhum documento cadastrado.</td></tr>}
+              {docs.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="empty">
+                    Nenhum documento cadastrado.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

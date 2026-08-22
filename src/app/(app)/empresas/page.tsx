@@ -1,6 +1,8 @@
+import Link from "next/link";
 import * as store from "@/lib/store";
 import { formatarCnpj } from "@/lib/format";
 import { ActionForm, Card, Input, Pill, SubmitButton } from "@/components/ui";
+import { RowLink } from "@/components/row-link";
 import { alternarAtivoAction, criarEmpresaAction, excluirAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +15,10 @@ export default async function Empresas() {
   return (
     <>
       <div className="topbar">
-        <div><h1>Empresas</h1><p>Agrupam documentos e processos no painel</p></div>
+        <div>
+          <h1>Empresas</h1>
+          <p>Agrupam documentos e processos no painel. Clique numa empresa para ver os processos dela.</p>
+        </div>
       </div>
 
       <Card title="Nova empresa">
@@ -27,24 +32,48 @@ export default async function Empresas() {
       <Card title="Cadastradas" hint={String(empresas.length)}>
         <div className="tablewrap">
           <table>
-            <thead><tr><th>Empresa</th><th>CNPJ</th><th className="right">Docs</th><th className="right">Processos</th><th>Status</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>CNPJ</th>
+                <th className="right">Docs</th>
+                <th className="right">Processos</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody>
               {empresas.map((e) => (
-                <tr key={e.id} className={e.ativo ? "" : "off"}>
-                  <td><b>{e.apelido || e.nome}</b>{e.apelido && <div className="sub">{e.nome}</div>}</td>
+                <RowLink key={e.id} href={`/empresas/${e.id}`} className={e.ativo ? "" : "off"}>
+                  <td>
+                    <Link href={`/empresas/${e.id}`} className="link">
+                      <b>{e.apelido || e.nome}</b>
+                    </Link>
+                    {e.apelido && <div className="sub">{e.nome}</div>}
+                  </td>
                   <td className="mono">{e.cnpj ? formatarCnpj(e.cnpj) : "—"}</td>
                   <td className="right">{nDocs(e.id)}</td>
                   <td className="right">{nProc(e.id)}</td>
                   <td>{e.ativo ? <Pill tone="ok">ativa</Pill> : <Pill>inativa</Pill>}</td>
                   <td>
                     <div className="actions-row">
-                      <form action={alternarAtivoAction.bind(null, "empresas", e.id, !e.ativo)}><SubmitButton tone="sm">{e.ativo ? "Desativar" : "Ativar"}</SubmitButton></form>
-                      <form action={excluirAction.bind(null, "empresas", e.id)}><SubmitButton tone="sm-danger">Excluir</SubmitButton></form>
+                      <form action={alternarAtivoAction.bind(null, "empresas", e.id, !e.ativo)}>
+                        <SubmitButton tone="sm">{e.ativo ? "Desativar" : "Ativar"}</SubmitButton>
+                      </form>
+                      <form action={excluirAction.bind(null, "empresas", e.id)}>
+                        <SubmitButton tone="sm-danger">Excluir</SubmitButton>
+                      </form>
                     </div>
                   </td>
-                </tr>
+                </RowLink>
               ))}
-              {empresas.length === 0 && <tr><td colSpan={6} className="empty">Nenhuma empresa cadastrada.</td></tr>}
+              {empresas.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="empty">
+                    Nenhuma empresa cadastrada.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -44,6 +44,7 @@ export type Processo = {
   provider_tracking_id: string | null;
   ativo: boolean;
   total_movimentacoes: number;
+  ultima_movimentacao_em: string | null;
   ultimo_check: string | null;
   ultimo_erro: string | null;
   created_at: string;

@@ -99,6 +99,8 @@ export async function aplicarRemoto(processo: Processo, remoto: ProcessoRemoto, 
     novas.map((m) => ({ data_hora: m.dataHora, codigo: m.codigo ?? null, descricao: m.descricao, complemento: m.complemento ?? null, fonte, hash: m.hash })),
   );
   capa.total_movimentacoes = conhecidos.size + inseridas.length;
+  const todasDatas = [...remoto.movimentacoes.map((m) => m.dataHora), processo.ultima_movimentacao_em ?? ""].filter(Boolean);
+  if (todasDatas.length) capa.ultima_movimentacao_em = todasDatas.sort().at(-1);
   await store.atualizar("processos", processo.id, capa);
   if (inseridas.length === 0) return 0;
 

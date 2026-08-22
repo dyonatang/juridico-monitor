@@ -17,6 +17,18 @@ export const maxDuration = 300;
  *  POST /api/ingestao  { tipo: "lote",      processos?: [...], documentos?: [...] }   (vários de uma vez)
  *  POST /api/ingestao  { tipo: "status",    mensagem, nivel: "info"|"erro" }          (agente reporta problemas, ex.: sessão expirada)
  */
+/** CORS: permite o carregador rodar de dentro do navegador (página do jus.br → este servidor). */
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+  "Access-Control-Allow-Private-Network": "true",
+};
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS });
+}
+const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: CORS });
+
 function autorizado(req: NextRequest) {
   const t = process.env.INGEST_TOKEN;
   if (!t) return false;
@@ -25,9 +37,9 @@ function autorizado(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!autorizado(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!autorizado(req)) return json({ error: "unauthorized" }, 401);
   const [docs, processos, conhecidos] = await Promise.all([store.listarDocumentos(true), store.listarProcessos({ apenasAtivos: true }), idsConhecidos()]);
-  return NextResponse.json({
+  return json({
     documentos: docs.map((d) => ({ id: d.id, tipo: d.tipo, numero: d.numero, numero_formatado: formatarDocumento(d.tipo, d.numero), nome: d.nome, empresa_id: d.empresa_id })),
     processos: processos.map((p) => ({ numero: p.numero_cnj, numero_formatado: p.numero_formatado, pecas_conhecidas: conhecidos[p.numero_cnj] ?? [] })),
     gerado_em: store.agora(),
@@ -35,9 +47,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!autorizado(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!autorizado(req)) return json({ error: "unauthorized" }, 401);
   const body = await req.json().catch(() => null);
-  if (!body?.tipo) return NextResponse.json({ error: "body inválido" }, { status: 400 });
+  if (!body?.tipo) return json({ error: "body inválido" }, 400);
 
   try {
     if (body.tipo === "status") {
@@ -46,7 +58,7 @@ export async function POST(req: NextRequest) {
         await notificarPendentes();
       }
       await store.finalizarSyncLog(await store.iniciarSyncLog(), { detalhes: { agente: "jusbr", nivel: body.nivel, mensagem: body.mensagem } });
-      return NextResponse.json({ ok: true });
+      return json({ ok: true });
     }
 
     const processos: JusbrProcesso[] = body.tipo === "processo" ? [body.processo] : body.processos ?? [];
@@ -68,8 +80,8 @@ export async function POST(req: NextRequest) {
       }
     }
     await notificarPendentes();
-    return NextResponse.json({ ok: resultado.erros.length === 0, ...resultado });
+    return json({ ok: resultado.erros.length === 0, ...resultado });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 }

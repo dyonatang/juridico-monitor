@@ -64,6 +64,9 @@ export const novoId = (col: string) => fs().collection(col).doc().id;
 const toObj = <T>(d: DocumentSnapshot): T => ({ id: d.id, ...(d.data() as object) }) as T;
 const all = async <T>(q: Query): Promise<T[]> => (await q.get()).docs.map((d) => toObj<T>(d));
 const desc = <T extends { created_at?: string }>(a: T, b: T) => (b.created_at ?? "").localeCompare(a.created_at ?? "");
+/** Mais recente primeiro: usa a data do campo indicado, caindo para created_at quando ausente. */
+const descPor = <T extends { created_at?: string }>(campo: keyof T) => (a: T, b: T) =>
+  String((b[campo] as unknown as string) ?? b.created_at ?? "").localeCompare(String((a[campo] as unknown as string) ?? a.created_at ?? ""));
 
 /** Remove chaves undefined (Firestore rejeita undefined). */
 const limpar = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
@@ -72,7 +75,7 @@ const limpar = <T extends object>(o: T): T => Object.fromEntries(Object.entries(
 export async function listarEmpresas(apenasAtivas = false): Promise<Empresa[]> {
   let q: Query = fs().collection("empresas");
   if (apenasAtivas) q = q.where("ativo", "==", true);
-  return (await all<Empresa>(q)).sort((a, b) => a.nome.localeCompare(b.nome));
+  return (await all<Empresa>(q)).sort(desc);
 }
 export async function criarEmpresa(data: Omit<Empresa, "id" | "created_at" | "ativo">): Promise<Empresa> {
   const ref = fs().collection("empresas").doc();
@@ -85,7 +88,7 @@ export async function criarEmpresa(data: Omit<Empresa, "id" | "created_at" | "at
 export async function listarDocumentos(apenasAtivos = false): Promise<DocumentoMonitorado[]> {
   let q: Query = fs().collection("documentos");
   if (apenasAtivos) q = q.where("ativo", "==", true);
-  return (await all<DocumentoMonitorado>(q)).sort((a, b) => a.nome.localeCompare(b.nome));
+  return (await all<DocumentoMonitorado>(q)).sort(desc);
 }
 export async function getDocumento(id: string) {
   const d = await fs().collection("documentos").doc(id).get();
@@ -120,7 +123,7 @@ export async function listarProcessos(f: { empresa_id?: string; documento_id?: s
   if (f.empresa_id) q = q.where("empresa_id", "==", f.empresa_id);
   if (f.documento_id) q = q.where("documento_id", "==", f.documento_id);
   if (f.apenasAtivos) q = q.where("ativo", "==", true);
-  return (await all<Processo>(q)).sort((a, b) => Number(b.ativo) - Number(a.ativo) || desc(a, b));
+  return (await all<Processo>(q)).sort(descPor("ultima_movimentacao_em"));
 }
 export async function getProcesso(id: string) {
   const d = await fs().collection("processos").doc(id).get();
@@ -131,10 +134,10 @@ export async function getProcessoPorTracking(trackingId: string) {
   const r = await fs().collection("processos").where("provider_tracking_id", "==", trackingId).limit(1).get();
   return r.empty ? null : toObj<Processo>(r.docs[0]);
 }
-export async function criarProcesso(data: Omit<Processo, "id" | "created_at" | "ativo" | "ultimo_check" | "ultimo_erro" | "total_movimentacoes">): Promise<Processo> {
+export async function criarProcesso(data: Omit<Processo, "id" | "created_at" | "ativo" | "ultimo_check" | "ultimo_erro" | "total_movimentacoes" | "ultima_movimentacao_em">): Promise<Processo> {
   const ref = fs().collection("processos").doc(data.numero_cnj);
   if ((await ref.get()).exists) throw new Error("Este processo já está cadastrado");
-  const p: Processo = { id: ref.id, ...data, ativo: true, ultimo_check: null, ultimo_erro: null, total_movimentacoes: 0, created_at: agora() };
+  const p: Processo = { id: ref.id, ...data, ativo: true, ultimo_check: null, ultimo_erro: null, total_movimentacoes: 0, ultima_movimentacao_em: null, created_at: agora() };
   await ref.set(limpar({ ...p, id: undefined }));
   return p;
 }

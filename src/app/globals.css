@@ -1,22 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f2f4f7; --surface: #ffffff; --surface-2: #f7f8fa; --line: #dde2ea; --line-strong: #c5ccd8;
-  --ink: #1b2a41; --ink-2: #4a5a72; --ink-3: #7c8aa0;
-  --accent: #8b2332; --accent-soft: #f6e7ea;
-  --ok: #2e7d4f; --ok-soft: #e3f2e8; --warn: #b7791f; --warn-soft: #fbf1dc; --bad: #c0392b; --bad-soft: #fbe5e2;
-  --nav: #1b2a41; --nav-ink: #c9d3e3; --nav-active: #ffffff; --nav-hover: rgba(255, 255, 255, 0.07);
-  --shadow: 0 1px 2px rgba(27, 42, 65, 0.06), 0 1px 1px rgba(27, 42, 65, 0.04);
+  --bg: #eef2f9; --surface: #ffffff; --surface-2: #f4f7fb; --line: #dbe4f0; --line-strong: #b9c8de;
+  --ink: #0c2340; --ink-2: #3c5a80; --ink-3: #7590ac;
+  --accent: #1d5fd6; --accent-soft: #e3edfd;
+  --ok: #1a7a52; --ok-soft: #e0f3ea; --warn: #a8710e; --warn-soft: #fbf0da; --bad: #c23b3b; --bad-soft: #fbe6e6;
+  --nav: #0a1f3d; --nav-ink: #a9c2e6; --nav-active: #ffffff; --nav-hover: rgba(255, 255, 255, 0.08);
+  --shadow: 0 1px 2px rgba(10, 31, 61, 0.07), 0 1px 1px rgba(10, 31, 61, 0.05);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f1620; --surface: #171f2b; --surface-2: #1e2835; --line: #2a3542; --line-strong: #3a4756;
-    --ink: #e6ebf2; --ink-2: #aab6c7; --ink-3: #7c8aa0;
-    --accent: #d66a7b; --accent-soft: #3a1f26;
-    --ok: #5fbf86; --ok-soft: #183324; --warn: #d9a441; --warn-soft: #3a2d12; --bad: #e06b5e; --bad-soft: #3d1c18;
-    --nav: #0b111a; --nav-ink: #94a3b8; --nav-active: #ffffff; --nav-hover: rgba(255, 255, 255, 0.06);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --bg: #060f1f; --surface: #0e1e35; --surface-2: #142944; --line: #223c5e; --line-strong: #2f4f77;
+    --ink: #e7eefb; --ink-2: #a9c2e6; --ink-3: #7590ac;
+    --accent: #5b9dff; --accent-soft: #14294c;
+    --ok: #52c98a; --ok-soft: #103322; --warn: #e0ac4c; --warn-soft: #3a2c12; --bad: #f0776b; --bad-soft: #3c1c1c;
+    --nav: #040c19; --nav-ink: #8fabd1; --nav-active: #ffffff; --nav-hover: rgba(255, 255, 255, 0.06);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
+}
+:root[data-theme="dark"] {
+  --bg: #060f1f; --surface: #0e1e35; --surface-2: #142944; --line: #223c5e; --line-strong: #2f4f77;
+  --ink: #e7eefb; --ink-2: #a9c2e6; --ink-3: #7590ac;
+  --accent: #5b9dff; --accent-soft: #14294c;
+  --ok: #52c98a; --ok-soft: #103322; --warn: #e0ac4c; --warn-soft: #3a2c12; --bad: #f0776b; --bad-soft: #3c1c1c;
+  --nav: #040c19; --nav-ink: #8fabd1; --nav-active: #ffffff; --nav-hover: rgba(255, 255, 255, 0.06);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 body { background: var(--bg); color: var(--ink); font: 14px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -149,3 +157,10 @@ td .sub, .sub { font-size: 12px; color: var(--ink-2); }
 .main[data-papel="leitura"] .actions-row,
 .main[data-papel="leitura"] .btn.danger,
 .main[data-papel="leitura"] .btn.primary { display: none !important; }
+
+.linha-clicavel { cursor: pointer; }
+.linha-clicavel:hover td { background: var(--accent-soft); }
+.feed li.clicavel { cursor: pointer; }
+.feed li.clicavel:hover { background: var(--surface-2); margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
+.stat-link { display: block; text-decoration: none; color: inherit; transition: box-shadow .12s; }
+.stat-link:hover { box-shadow: 0 0 0 2px var(--accent); border-radius: 8px; }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import * as store from "@/lib/store";
 import { fmtDataHora } from "@/lib/format";
 import { Card, Stat, Pill, SubmitButton } from "@/components/ui";
+import { ItemLink, RowLink } from "@/components/row-link";
 import { marcarLidoAction, sincronizarTudoAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -32,9 +33,9 @@ export default async function Painel() {
   const novosProc = alertas.filter((a) => a.tipo === "novo_processo").length;
 
   // agrupamento por empresa (+ "Família" para documentos sem empresa)
-  const grupos = new Map<string, { nome: string; sub: string; ativos: number; alertas: number; ultimo: string | null }>();
-  for (const e of empresas) grupos.set(e.id, { nome: e.apelido || e.nome, sub: e.apelido ? e.nome : "", ativos: 0, alertas: 0, ultimo: null });
-  grupos.set("_fam", { nome: "Família / sem empresa", sub: `${docs.filter((d) => !d.empresa_id).length} CPF(s) monitorado(s)`, ativos: 0, alertas: 0, ultimo: null });
+  const grupos = new Map<string, { id: string | null; nome: string; sub: string; ativos: number; alertas: number; ultimo: string | null }>();
+  for (const e of empresas) grupos.set(e.id, { id: e.id, nome: e.apelido || e.nome, sub: e.apelido ? e.nome : "", ativos: 0, alertas: 0, ultimo: null });
+  grupos.set("_fam", { id: null, nome: "Família / sem empresa", sub: `${docs.filter((d) => !d.empresa_id).length} CPF(s) monitorado(s)`, ativos: 0, alertas: 0, ultimo: null });
   for (const p of processos) {
     const g = grupos.get(p.empresa_id ?? "_fam") ?? grupos.get("_fam")!;
     g.ativos++;
@@ -63,10 +64,10 @@ export default async function Painel() {
       </div>
 
       <div className="stats">
-        <Stat label="Processos ativos" value={processos.length} sub={`${processos.filter((p) => p.origem === "descoberto").length} descobertos automaticamente`} />
-        <Stat label="CPFs / CNPJs monitorados" value={docs.length} sub={`${docs.filter((d) => d.tipo === "CNPJ").length} empresas · ${docs.filter((d) => d.tipo === "CPF").length} pessoas`} />
-        <Stat label="Alertas pendentes" value={alertas.length} tone={alertas.length ? "alert" : "ok"} sub={`${novosProc} processo(s) novo(s) · ${alertas.length - novosProc} andamento(s)`} />
-        <Stat label="Com erro na consulta" value={comErro.length} tone={comErro.length ? "alert" : "ok"} sub={comErro.length ? "veja abaixo" : "todas as fontes responderam"} />
+        <Stat href="/processos" label="Processos ativos" value={processos.length} sub={`${processos.filter((p) => p.origem === "descoberto").length} descobertos automaticamente`} />
+        <Stat href="/documentos" label="CPFs / CNPJs monitorados" value={docs.length} sub={`${docs.filter((d) => d.tipo === "CNPJ").length} empresas · ${docs.filter((d) => d.tipo === "CPF").length} pessoas`} />
+        <Stat href="/alertas" label="Alertas pendentes" value={alertas.length} tone={alertas.length ? "alert" : "ok"} sub={`${novosProc} processo(s) novo(s) · ${alertas.length - novosProc} andamento(s)`} />
+        <Stat href="/processos?erro=1" label="Com erro na consulta" value={comErro.length} tone={comErro.length ? "alert" : "ok"} sub={comErro.length ? "veja abaixo" : "todas as fontes responderam"} />
       </div>
 
       <div className="grid2">
@@ -83,24 +84,36 @@ export default async function Painel() {
           <div className="card-b">
             {alertas.length === 0 && <p className="empty">Nenhum alerta pendente.</p>}
             <ul className="feed">
-              {alertas.slice(0, 10).map((a) => (
-                <li key={a.id} className={a.tipo === "novo_processo" ? "novo" : a.tipo === "erro" ? "erro" : a.tipo === "documento_importado" ? "doc" : ""}>
-                  <span className="stripe" />
-                  <div>
-                    <Pill tone={a.tipo === "erro" ? "bad" : a.tipo === "novo_processo" ? "warn" : a.tipo === "documento_importado" ? "accent" : "ok"}>{a.tipo === "nova_movimentacao" ? "andamento" : a.tipo === "novo_processo" ? "processo novo" : a.tipo === "documento_importado" ? "documento" : "erro"}</Pill>{" "}
-                    {a.processo_id ? (
-                      <Link href={`/processos/${a.processo_id}`} className="t link">{a.titulo}</Link>
-                    ) : (
-                      <span className="t">{a.titulo}</span>
-                    )}
-                    <div className="m">{a.mensagem}</div>
-                    <div className="when">{fmtDataHora(a.created_at)}</div>
-                  </div>
-                  <form action={marcarLidoAction.bind(null, a.id)}>
-                    <SubmitButton tone="sm">✓</SubmitButton>
-                  </form>
-                </li>
-              ))}
+              {alertas.slice(0, 10).map((a) => {
+                const linha = (
+                  <>
+                    <span className="stripe" />
+                    <div>
+                      <Pill tone={a.tipo === "erro" ? "bad" : a.tipo === "novo_processo" ? "warn" : a.tipo === "documento_importado" ? "accent" : "ok"}>{a.tipo === "nova_movimentacao" ? "andamento" : a.tipo === "novo_processo" ? "processo novo" : a.tipo === "documento_importado" ? "documento" : "erro"}</Pill>{" "}
+                      {a.processo_id ? (
+                        <Link href={`/processos/${a.processo_id}`} className="t link">{a.titulo}</Link>
+                      ) : (
+                        <span className="t">{a.titulo}</span>
+                      )}
+                      <div className="m">{a.mensagem}</div>
+                      <div className="when">{fmtDataHora(a.created_at)}</div>
+                    </div>
+                    <form action={marcarLidoAction.bind(null, a.id)}>
+                      <SubmitButton tone="sm">✓</SubmitButton>
+                    </form>
+                  </>
+                );
+                const cls = a.tipo === "novo_processo" ? "novo" : a.tipo === "erro" ? "erro" : a.tipo === "documento_importado" ? "doc" : "";
+                return a.processo_id ? (
+                  <ItemLink key={a.id} href={`/processos/${a.processo_id}`} className={cls}>
+                    {linha}
+                  </ItemLink>
+                ) : (
+                  <li key={a.id} className={cls}>
+                    {linha}
+                  </li>
+                );
+              })}
             </ul>
             {alertas.length > 10 && (
               <Link href="/alertas" className="hint" style={{ textDecoration: "underline" }}>
@@ -117,7 +130,7 @@ export default async function Painel() {
               {movs.map((m) => {
                 const p = porId.get(m.processo_id);
                 return (
-                  <li key={m.id}>
+                  <ItemLink key={m.id} href={`/processos/${m.processo_id}`}>
                     <span className="stripe" style={{ background: "var(--line-strong)" }} />
                     <div>
                       <Link href={`/processos/${m.processo_id}`} className="t link mono">{p?.numero_formatado ?? m.processo_id}</Link>
@@ -126,7 +139,7 @@ export default async function Painel() {
                       <div className="when">{fmtDataHora(m.data_hora)}</div>
                     </div>
                     <span />
-                  </li>
+                  </ItemLink>
                 );
               })}
             </ul>
@@ -139,14 +152,23 @@ export default async function Painel() {
           <table>
             <thead><tr><th>Empresa</th><th className="right">Ativos</th><th>Último andamento (7 dias)</th><th>Pendente</th></tr></thead>
             <tbody>
-              {[...grupos.values()].filter((g) => g.ativos || g.alertas || g.sub).map((g) => (
-                <tr key={g.nome}>
-                  <td><b>{g.nome}</b>{g.sub && <div className="sub">{g.sub}</div>}</td>
-                  <td className="right">{g.ativos}</td>
-                  <td>{g.ultimo ?? <span className="hint">—</span>}</td>
-                  <td>{g.alertas ? <Pill tone="accent">{g.alertas} alerta(s)</Pill> : <Pill>em dia</Pill>}</td>
-                </tr>
-              ))}
+              {[...grupos.values()].filter((g) => g.ativos || g.alertas || g.sub).map((g) =>
+                g.id ? (
+                  <RowLink key={g.nome} href={`/empresas/${g.id}`}>
+                    <td><b>{g.nome}</b>{g.sub && <div className="sub">{g.sub}</div>}</td>
+                    <td className="right">{g.ativos}</td>
+                    <td>{g.ultimo ?? <span className="hint">—</span>}</td>
+                    <td>{g.alertas ? <Pill tone="accent">{g.alertas} alerta(s)</Pill> : <Pill>em dia</Pill>}</td>
+                  </RowLink>
+                ) : (
+                  <tr key={g.nome}>
+                    <td><b>{g.nome}</b>{g.sub && <div className="sub">{g.sub}</div>}</td>
+                    <td className="right">{g.ativos}</td>
+                    <td>{g.ultimo ?? <span className="hint">—</span>}</td>
+                    <td>{g.alertas ? <Pill tone="accent">{g.alertas} alerta(s)</Pill> : <Pill>em dia</Pill>}</td>
+                  </tr>
+                ),
+              )}
               {grupos.size === 0 && <tr><td colSpan={4} className="empty">Cadastre uma empresa para começar.</td></tr>}
             </tbody>
           </table>
@@ -158,14 +180,14 @@ export default async function Painel() {
           <div className="card-b">
             <ul className="feed">
               {comErro.map((p) => (
-                <li key={p.id} className="erro">
+                <ItemLink key={p.id} href={`/processos/${p.id}`} className="erro">
                   <span className="stripe" />
                   <div>
                     <Link href={`/processos/${p.id}`} className="t link mono">{p.numero_formatado}</Link>
                     <div className="m">{p.ultimo_erro}</div>
                   </div>
                   <span />
-                </li>
+                </ItemLink>
               ))}
             </ul>
           </div>

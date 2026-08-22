@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/actions";
@@ -19,14 +20,22 @@ export function Card({ title, children, actions, hint }: { title?: string; child
   );
 }
 
-export function Stat({ label, value, sub, tone }: { label: string; value: string | number; sub?: string; tone?: "alert" | "ok" }) {
-  return (
-    <div className={`stat ${tone ?? ""}`}>
+export function Stat({ label, value, sub, tone, href }: { label: string; value: string | number; sub?: string; tone?: "alert" | "ok"; href?: string }) {
+  const body = (
+    <>
       <div className="lbl">{label}</div>
       <div className="val">{value}</div>
       {sub && <div className="sub">{sub}</div>}
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <Link href={href} className={`stat-link stat ${tone ?? ""}`}>
+        {body}
+      </Link>
+    );
+  }
+  return <div className={`stat ${tone ?? ""}`}>{body}</div>;
 }
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement> & { label: string; wide?: boolean; mono?: boolean }) {
