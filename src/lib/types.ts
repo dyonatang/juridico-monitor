@@ -28,6 +28,7 @@ export type Processo = {
   polo_passivo: string | null;
   valor_causa: number | null;
   situacao: string | null;
+  resumo_status: string | null; // resumo em linguagem simples de como está o processo, tipo advogado explicando pro cliente
   descricao: string | null;
   documento_id: string | null;
   origem: "manual" | "descoberto";

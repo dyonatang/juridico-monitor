@@ -45,6 +45,12 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
 
       {p.ultimo_erro && <div className="notice bad"><b>Erro na última consulta:</b> {p.ultimo_erro}</div>}
 
+      {p.resumo_status && (
+        <div className="notice" style={{ borderColor: "var(--accent)" }}>
+          <b>Como está:</b> {p.resumo_status}
+        </div>
+      )}
+
       <Card title="Capa" actions={<Pill tone={p.ativo ? "ok" : "neutral"}>{p.ativo ? "ativo" : "pausado"}{p.grau ? ` · ${p.grau}` : ""}</Pill>}>
         <dl className="capa">
           {campos.filter(([, v]) => v).map(([k, v]) => (
