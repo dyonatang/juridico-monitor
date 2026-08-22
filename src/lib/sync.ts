@@ -15,7 +15,6 @@ export async function upsertProcessoRemoto(
   remoto: ProcessoRemoto,
   meta: {
     origem: "manual" | "descoberto";
-    empresa_id?: string | null;
     documento_id?: string | null;
     provider?: string | null;
     provider_tracking_id?: string | null;
@@ -40,7 +39,6 @@ export async function upsertProcessoRemoto(
     valor_causa: remoto.valorCausa ?? null,
     situacao: remoto.situacao ?? null,
     descricao: meta.descricao ?? null,
-    empresa_id: meta.empresa_id ?? null,
     documento_id: meta.documento_id ?? null,
     origem: meta.origem,
     provider: meta.provider ?? null,

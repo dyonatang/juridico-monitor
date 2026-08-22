@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import * as store from "@/lib/store";
 import { formatarDocumento, fmtDataHora } from "@/lib/format";
-import { Card, Pill } from "@/components/ui";
+import { BackLink, Card, Pill } from "@/components/ui";
 import { ProcessosTable } from "@/components/processos-table";
 
 export const dynamic = "force-dynamic";
@@ -10,17 +11,25 @@ export default async function DocumentoDetalhe({ params }: { params: Promise<{ i
   const { id } = await params;
   const d = await store.getDocumento(id);
   if (!d) notFound();
-  const [processos, empresas] = await Promise.all([store.listarProcessos({ documento_id: id }), store.listarEmpresas()]);
-  const empresa = empresas.find((e) => e.id === d.empresa_id);
+  const [processos, todos] = await Promise.all([store.listarProcessos({ documento_id: id }), store.listarDocumentos()]);
+  const vinculo = d.vinculo_id ? todos.find((x) => x.id === d.vinculo_id) : null;
+  const vinculados = todos.filter((x) => x.vinculo_id === id);
 
   return (
     <>
+      <BackLink href="/documentos">CPFs e CNPJs</BackLink>
       <div className="topbar">
         <div>
-          <h1>{d.nome}</h1>
+          <h1>{d.apelido || d.nome}</h1>
           <p>
+            {d.apelido && <>{d.nome} · </>}
             <Pill>{d.tipo}</Pill> <span className="mono">{formatarDocumento(d.tipo, d.numero)}</span>
-            {empresa && <> · {empresa.apelido || empresa.nome}</>}
+            {vinculo && (
+              <>
+                {" "}
+                · <Link href={`/documentos/${vinculo.id}`} className="link">{vinculo.apelido || vinculo.nome}</Link>
+              </>
+            )}
           </p>
         </div>
         <Pill tone={d.ativo ? "ok" : "neutral"}>{d.ativo ? "monitoramento ativo" : "pausado"}</Pill>
@@ -48,6 +57,21 @@ export default async function DocumentoDetalhe({ params }: { params: Promise<{ i
           )}
         </dl>
       </Card>
+
+      {vinculados.length > 0 && (
+        <Card title="Vinculados a este" hint={String(vinculados.length)}>
+          <ul className="plain-list" style={{ padding: "8px 16px" }}>
+            {vinculados.map((v) => (
+              <li key={v.id} style={{ padding: "4px 0" }}>
+                <Link href={`/documentos/${v.id}`} className="link">
+                  {v.apelido || v.nome}
+                </Link>{" "}
+                <Pill>{v.tipo}</Pill> <span className="mono sub">{formatarDocumento(v.tipo, v.numero)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card title="Processos" hint={`${processos.length} · mais recente primeiro`}>
         <ProcessosTable processos={processos} mostrarVinculo={false} />

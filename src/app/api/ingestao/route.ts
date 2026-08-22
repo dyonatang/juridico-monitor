@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   if (!autorizado(req)) return json({ error: "unauthorized" }, 401);
   const [docs, processos, conhecidos] = await Promise.all([store.listarDocumentos(true), store.listarProcessos({ apenasAtivos: true }), idsConhecidos()]);
   return json({
-    documentos: docs.map((d) => ({ id: d.id, tipo: d.tipo, numero: d.numero, numero_formatado: formatarDocumento(d.tipo, d.numero), nome: d.nome, empresa_id: d.empresa_id })),
+    documentos: docs.map((d) => ({ id: d.id, tipo: d.tipo, numero: d.numero, numero_formatado: formatarDocumento(d.tipo, d.numero), nome: d.nome })),
     processos: processos.map((p) => ({ numero: p.numero_cnj, numero_formatado: p.numero_formatado, pecas_conhecidas: conhecidos[p.numero_cnj] ?? [] })),
     gerado_em: store.agora(),
   });

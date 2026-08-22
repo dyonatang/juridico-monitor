@@ -95,3 +95,11 @@ export function ActionForm({
 export function Pill({ children, tone = "neutral" }: { children: React.ReactNode; tone?: "neutral" | "ok" | "warn" | "bad" | "accent" }) {
   return <span className={`pill ${tone}`}>{children}</span>;
 }
+
+export function BackLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="back-link">
+      ← {children}
+    </Link>
+  );
+}

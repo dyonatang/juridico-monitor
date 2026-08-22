@@ -3,7 +3,7 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import * as store from "@/lib/store";
 import { formatarCnj, formatarDocumento, fmtData, fmtDataHora, somenteDigitos } from "@/lib/format";
-import { cadastrarDocumento, cadastrarEmpresa, cadastrarProcesso, marcarAlertasLidos } from "@/lib/repo";
+import { cadastrarDocumento, cadastrarProcesso, marcarAlertasLidos } from "@/lib/repo";
 import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
@@ -12,26 +12,20 @@ export const maxDuration = 300;
 const texto = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 const json = (v: unknown) => texto(JSON.stringify(v, null, 2));
 
-async function mapaEmpresas() {
+async function mapaDocumentos() {
   const m = new Map<string, string>();
-  for (const e of await store.listarEmpresas()) m.set(e.id, e.apelido || e.nome);
+  for (const d of await store.listarDocumentos()) m.set(d.id, d.apelido || d.nome);
   return m;
 }
 
 const handler = createMcpHandler(
   (server) => {
     server.registerTool(
-      "listar_empresas",
-      { title: "Listar empresas", description: "Lista as empresas cadastradas no monitor jurídico.", inputSchema: z.object({}) },
-      async () => json(await store.listarEmpresas()),
-    );
-
-    server.registerTool(
       "listar_documentos_monitorados",
-      { title: "Listar CPFs/CNPJs monitorados", description: "Lista os CPFs e CNPJs monitorados, com status do monitoramento.", inputSchema: z.object({}) },
+      { title: "Listar CPFs/CNPJs monitorados", description: "Lista os CPFs e CNPJs monitorados (inclui empresas e pessoas do grupo), com status do monitoramento.", inputSchema: z.object({}) },
       async () => {
-        const emp = await mapaEmpresas();
-        return json((await store.listarDocumentos()).map((d) => ({ ...d, numero_formatado: formatarDocumento(d.tipo, d.numero), empresa: d.empresa_id ? emp.get(d.empresa_id) : null })));
+        const nomes = await mapaDocumentos();
+        return json((await store.listarDocumentos()).map((d) => ({ ...d, numero_formatado: formatarDocumento(d.tipo, d.numero), vinculo: d.vinculo_id ? nomes.get(d.vinculo_id) : null })));
       },
     );
 
@@ -39,17 +33,17 @@ const handler = createMcpHandler(
       "listar_processos",
       {
         title: "Listar processos",
-        description: "Lista processos monitorados. Filtros opcionais por empresa, documento ou apenas ativos.",
-        inputSchema: z.object({ empresa_id: z.string().optional(), documento_id: z.string().optional(), apenas_ativos: z.boolean().default(true) }),
+        description: "Lista processos monitorados. Filtro opcional por documento (CPF/CNPJ) ou apenas ativos.",
+        inputSchema: z.object({ documento_id: z.string().optional(), apenas_ativos: z.boolean().default(true) }),
       },
-      async ({ empresa_id, documento_id, apenas_ativos }) => {
-        const emp = await mapaEmpresas();
-        const lista = await store.listarProcessos({ empresa_id, documento_id, apenasAtivos: apenas_ativos });
+      async ({ documento_id, apenas_ativos }) => {
+        const nomes = await mapaDocumentos();
+        const lista = await store.listarProcessos({ documento_id, apenasAtivos: apenas_ativos });
         return json(
           lista.map((p) => ({
             numero: p.numero_formatado, tribunal: p.tribunal, classe: p.classe, assunto: p.assunto, orgao_julgador: p.orgao_julgador,
             polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, situacao: p.situacao, descricao: p.descricao, origem: p.origem,
-            empresa: p.empresa_id ? emp.get(p.empresa_id) : null, total_movimentacoes: p.total_movimentacoes, ativo: p.ativo,
+            vinculo: p.documento_id ? nomes.get(p.documento_id) : null, total_movimentacoes: p.total_movimentacoes, ativo: p.ativo,
             ultimo_check: p.ultimo_check, ultimo_erro: p.ultimo_erro,
           })),
         );
@@ -82,14 +76,14 @@ const handler = createMcpHandler(
         const desde = new Date(Date.now() - dias * 86400000).toISOString();
         const movs = await store.movimentacoesRecentes(desde);
         if (movs.length === 0) return texto(`Nenhum andamento novo detectado nos últimos ${dias} dias.`);
-        const emp = await mapaEmpresas();
+        const nomes = await mapaDocumentos();
         const cache = new Map<string, Awaited<ReturnType<typeof store.getProcesso>>>();
         const linhas: string[] = [];
         for (const m of movs) {
           if (!cache.has(m.processo_id)) cache.set(m.processo_id, await store.getProcesso(m.processo_id));
           const p = cache.get(m.processo_id);
-          const empresa = p?.empresa_id ? emp.get(p.empresa_id) : null;
-          linhas.push(`• ${fmtDataHora(m.data_hora)} — ${p?.descricao ?? p?.numero_formatado} (${p?.numero_formatado}${empresa ? ", " + empresa : ""})\n  ${m.descricao}${m.complemento ? ` — ${m.complemento}` : ""}`);
+          const vinculo = p?.documento_id ? nomes.get(p.documento_id) : null;
+          linhas.push(`• ${fmtDataHora(m.data_hora)} — ${p?.descricao ?? p?.numero_formatado} (${p?.numero_formatado}${vinculo ? ", " + vinculo : ""})\n  ${m.descricao}${m.complemento ? ` — ${m.complemento}` : ""}`);
         }
         return texto(`${movs.length} andamento(s) nos últimos ${dias} dias:\n\n${linhas.join("\n\n")}`);
       },
@@ -116,17 +110,18 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
-      "cadastrar_empresa",
-      { title: "Cadastrar empresa", description: "Cadastra uma empresa do grupo.", inputSchema: z.object({ nome: z.string(), cnpj: z.string().optional(), apelido: z.string().optional() }) },
-      async (input) => json(await cadastrarEmpresa(input)),
-    );
-
-    server.registerTool(
       "cadastrar_documento",
       {
         title: "Cadastrar CPF/CNPJ para monitorar",
-        description: "Cadastra um CPF ou CNPJ para monitoramento de novos processos. Com provedor premium (Judit/Escavador) cria o tracking e importa os processos existentes.",
-        inputSchema: z.object({ tipo: z.enum(["CPF", "CNPJ"]), numero: z.string(), nome: z.string(), empresa_id: z.string().optional(), observacao: z.string().optional() }),
+        description: "Cadastra um CPF ou CNPJ (pessoa ou empresa do grupo) para monitoramento de novos processos. Com provedor premium (Judit/Escavador) cria o tracking e importa os processos existentes.",
+        inputSchema: z.object({
+          tipo: z.enum(["CPF", "CNPJ"]),
+          numero: z.string(),
+          nome: z.string(),
+          apelido: z.string().optional(),
+          vinculo_id: z.string().optional().describe("id de outro documento (ex.: CNPJ de uma empresa do grupo) ao qual este está associado"),
+          observacao: z.string().optional(),
+        }),
       },
       async (input) => json(await cadastrarDocumento(input)),
     );
@@ -139,7 +134,6 @@ const handler = createMcpHandler(
         inputSchema: z.object({
           numero: z.string().describe("Número CNJ, ex.: 0001234-56.2024.8.08.0024"),
           descricao: z.string().optional().describe("Apelido/resumo interno"),
-          empresa_id: z.string().optional(),
           documento_id: z.string().optional(),
         }),
       },
@@ -185,7 +179,11 @@ const handler = createMcpHandler(
       { title: "Resumo geral", description: "Visão geral: contagens, última sincronização e processos com erro.", inputSchema: z.object({}) },
       async () => {
         const [processos, docs, alertas, log, lista] = await Promise.all([
-          store.contarProcessosAtivos(), store.contarDocumentosAtivos(), store.contarAlertasNaoLidos(), store.ultimoSyncLog(), store.listarProcessos({ apenasAtivos: true }),
+          store.contarProcessosAtivos(),
+          store.contarDocumentosAtivos(),
+          store.contarAlertasNaoLidos(),
+          store.ultimoSyncLog(),
+          store.listarProcessos({ apenasAtivos: true }),
         ]);
         const comErro = lista.filter((p) => p.ultimo_erro);
         return texto(

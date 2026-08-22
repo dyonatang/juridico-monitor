@@ -11,6 +11,14 @@ import type { ProcessoProvider, ProcessoRemoto, MovimentacaoRemota } from "./typ
  */
 const CHAVE_PUBLICA_CNJ = "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==";
 
+/** O DataJud às vezes manda "2025-08-14T..." (ISO) e às vezes "20250814150000" (só dígitos) — normaliza pros dois casos. */
+function normalizarDataAjuizamento(raw?: string): string | null {
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const digitos = raw.replace(/\D/g, "");
+  return digitos.length >= 8 ? `${digitos.slice(0, 4)}-${digitos.slice(4, 6)}-${digitos.slice(6, 8)}` : null;
+}
+
 type DataJudHit = {
   _source: {
     numeroProcesso: string;
@@ -88,7 +96,7 @@ export class DataJudProvider implements ProcessoProvider {
       assunto: capa.assuntos?.map((a) => a.nome).filter(Boolean).join("; ") || null,
       orgaoJulgador: capa.orgaoJulgador?.nome ?? null,
       grau: grauMaisAlto,
-      dataAjuizamento: capa.dataAjuizamento ? capa.dataAjuizamento.slice(0, 10) : null,
+      dataAjuizamento: normalizarDataAjuizamento(capa.dataAjuizamento),
       // DataJud não expõe partes (Portaria CNJ 160/2020) — ficam em branco.
       poloAtivo: null,
       poloPassivo: null,

@@ -31,7 +31,6 @@ export async function POST(req: NextRequest) {
     const { processo } = await upsertProcessoRemoto(remoto, {
       origem: "descoberto",
       documento_id: doc?.id ?? procTrack?.documento_id ?? null,
-      empresa_id: doc?.empresa_id ?? procTrack?.empresa_id ?? null,
       provider: "judit",
       provider_tracking_id: doc ? null : trackingId,
     });

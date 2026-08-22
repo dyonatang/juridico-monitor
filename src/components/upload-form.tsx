@@ -5,7 +5,7 @@ import Link from "next/link";
 import { importarPdfAction, type ImportState } from "@/app/actions";
 import { SubmitButton, Select } from "./ui";
 
-export function UploadForm({ empresas }: { empresas: { id: string; nome: string }[] }) {
+export function UploadForm({ documentos }: { documentos: { id: string; nome: string }[] }) {
   const [state, action] = useActionState<ImportState, FormData>(importarPdfAction, undefined);
   const [nomes, setNomes] = useState<string[]>([]);
   const [arrastando, setArrastando] = useState(false);
@@ -39,9 +39,9 @@ export function UploadForm({ empresas }: { empresas: { id: string; nome: string 
           <ul className="plain-list">{nomes.map((n) => <li key={n}>📄 {n}</li>)}</ul>
         )}
       </div>
-      <Select label="Empresa (opcional — o sistema tenta descobrir sozinho)" name="empresa_id" defaultValue="">
+      <Select label="Vínculo (opcional — o sistema tenta descobrir sozinho)" name="documento_id" defaultValue="">
         <option value="">— detectar automaticamente —</option>
-        {empresas.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+        {documentos.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
       </Select>
       <div className="actions">
         <SubmitButton>Enviar e ler</SubmitButton>

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import * as store from "@/lib/store";
 import { fmtData, fmtDataHora } from "@/lib/format";
-import { Card, Pill, SubmitButton } from "@/components/ui";
+import { BackLink, Card, Pill, SubmitButton } from "@/components/ui";
 import { alternarAtivoAction, excluirAction, sincronizarProcessoAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,7 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
   const { id } = await params;
   const p = await store.getProcesso(id);
   if (!p) notFound();
-  const [movs, empresas, docs, arquivos] = await Promise.all([store.listarMovimentacoes(p.id), store.listarEmpresas(), store.listarDocumentos(), store.listarArquivosDoProcesso(p.id)]);
-  const empresa = empresas.find((e) => e.id === p.empresa_id);
+  const [movs, docs, arquivos] = await Promise.all([store.listarMovimentacoes(p.id), store.listarDocumentos(), store.listarArquivosDoProcesso(p.id)]);
   const doc = docs.find((d) => d.id === p.documento_id);
 
   const campos: [string, React.ReactNode][] = [
@@ -24,18 +23,18 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
     ["Polo ativo", p.polo_ativo],
     ["Polo passivo", p.polo_passivo],
     ["Situação", p.situacao],
-    ["Empresa", empresa ? empresa.apelido || empresa.nome : null],
-    ["Parte monitorada", doc?.nome],
+    ["Vínculo", doc ? doc.apelido || doc.nome : null],
     ["Origem", p.origem === "descoberto" ? "descoberto automaticamente" : "cadastro manual"],
     ["Fonte", `${p.provider ?? "datajud"} · último check ${fmtDataHora(p.ultimo_check)}`],
   ];
 
   return (
     <>
+      <BackLink href="/processos">Processos</BackLink>
       <div className="topbar">
         <div>
           <h1 className="mono" style={{ fontFamily: '"IBM Plex Mono", monospace', fontWeight: 500, fontSize: 24 }}>{p.numero_formatado}</h1>
-          <p>{[p.descricao, empresa ? empresa.apelido || empresa.nome : null].filter(Boolean).join(" · ") || "sem descrição"}</p>
+          <p>{[p.descricao, doc ? doc.apelido || doc.nome : null].filter(Boolean).join(" · ") || "sem descrição"}</p>
         </div>
         <div className="actions-row">
           <form action={sincronizarProcessoAction.bind(null, id)}><SubmitButton>Consultar agora</SubmitButton></form>

@@ -61,33 +61,32 @@ function paraRemoto(p: JusbrProcesso): ProcessoRemoto {
   };
 }
 
-/** Descobre a empresa/documento do grupo a partir das partes (CPF/CNPJ) do processo. */
+/** Descobre o CPF/CNPJ do grupo a partir das partes (CPF/CNPJ) do processo. */
 async function vincularPorPartes(p: JusbrProcesso) {
   const docs = await store.listarDocumentos();
   const nums = new Set((p.partes ?? []).flatMap((x) => x.documentos ?? []).map(somenteDigitos));
-  for (const d of docs) if (nums.has(d.numero)) return { documento_id: d.id, empresa_id: d.empresa_id };
-  return { documento_id: null, empresa_id: null };
+  for (const d of docs) if (nums.has(d.numero)) return { documento_id: d.id };
+  return { documento_id: null };
 }
 
 /**
  * Recebe um processo completo (capa + partes + movimentos). Cria se não existir (origem "descoberto")
  * e aplica as movimentações. Retorna o que aconteceu.
  */
-export async function ingerirProcesso(p: JusbrProcesso, vinculo?: { documento_id?: string | null; empresa_id?: string | null }) {
+export async function ingerirProcesso(p: JusbrProcesso, vinculo?: { documento_id?: string | null }) {
   const numero = somenteDigitos(p.numero);
   if (numero.length !== 20 || !validarCnj(numero)) throw new Error(`Número CNJ inválido: ${p.numero}`);
   const remoto = paraRemoto(p);
-  const v = vinculo?.documento_id || vinculo?.empresa_id ? vinculo : await vincularPorPartes(p);
+  const v = vinculo?.documento_id ? vinculo : await vincularPorPartes(p);
   const { processo, criado } = await upsertProcessoRemoto(remoto, {
     origem: "descoberto",
     documento_id: v.documento_id ?? null,
-    empresa_id: v.empresa_id ?? null,
     provider: "jusbr",
     descricao: [p.classe, remoto.poloAtivo && remoto.poloPassivo ? `${remoto.poloAtivo} x ${remoto.poloPassivo}` : null].filter(Boolean).join(" — ").slice(0, 120) || null,
   });
-  // completa vínculo de processo antigo sem empresa/documento
-  if (!criado && !processo.empresa_id && !processo.documento_id && (v.documento_id || v.empresa_id)) {
-    await store.atualizar("processos", processo.id, { documento_id: v.documento_id ?? null, empresa_id: v.empresa_id ?? null });
+  // completa vínculo de processo antigo sem documento
+  if (!criado && !processo.documento_id && v.documento_id) {
+    await store.atualizar("processos", processo.id, { documento_id: v.documento_id });
   }
   const novas = remoto.movimentacoes.length ? await aplicarRemoto(processo, remoto, "jusbr") : 0;
   return { numero: processo.numero_formatado, criado, novas };
@@ -149,7 +148,6 @@ export async function ingerirDocumento(d: JusbrDocumento): Promise<{ id: string;
     nome: `${nomeBase}.${ext}`,
     tamanho: conteudoSalvo.length,
     storage_path: caminho,
-    empresa_id: processo.empresa_id,
     documento_id: processo.documento_id,
     vinculo: "processo",
     processos: [numero],

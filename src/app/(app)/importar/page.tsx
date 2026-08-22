@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 const kb = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
 
 export default async function Importar() {
-  const [arquivos, empresas] = await Promise.all([store.listarArquivos(50), store.listarEmpresas(true)]);
-  const nomeEmpresa = new Map(empresas.map((e) => [e.id, e.apelido || e.nome]));
+  const [arquivos, docs] = await Promise.all([store.listarArquivos(50), store.listarDocumentos(true)]);
+  const nomeDoc = new Map(docs.map((d) => [d.id, d.apelido || d.nome]));
   const ia = leitorIaDisponivel();
 
   return (
@@ -31,7 +31,7 @@ export default async function Importar() {
       )}
 
       <Card title="Enviar documentos" hint="PDF · até 30 MB por envio">
-        <UploadForm empresas={empresas.map((e) => ({ id: e.id, nome: e.apelido || e.nome }))} />
+        <UploadForm documentos={docs.map((d) => ({ id: d.id, nome: d.apelido || d.nome }))} />
       </Card>
 
       <Card title="Importados" hint={String(arquivos.length)}>
@@ -56,7 +56,7 @@ export default async function Importar() {
                         </Link>
                       );
                     })}
-                    {a.empresa_id && <Pill>{nomeEmpresa.get(a.empresa_id) ?? "empresa"}{a.vinculo ? ` (por ${a.vinculo})` : ""}</Pill>}
+                    {a.documento_id && <Pill>{nomeDoc.get(a.documento_id) ?? "vínculo"}{a.vinculo ? ` (por ${a.vinculo})` : ""}</Pill>}
                   </div>
                   {a.avisos.length > 0 && <div className="sub" style={{ marginTop: 4, color: "var(--warn)" }}>{a.avisos.join(" ")}</div>}
                   <div className="when">{fmtDataHora(a.created_at)}</div>

@@ -164,3 +164,5 @@ td .sub, .sub { font-size: 12px; color: var(--ink-2); }
 .feed li.clicavel:hover { background: var(--surface-2); margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 6px; }
 .stat-link { display: block; text-decoration: none; color: inherit; transition: box-shadow .12s; }
 .stat-link:hover { box-shadow: 0 0 0 2px var(--accent); border-radius: 8px; }
+.back-link { display: inline-block; color: var(--ink-2); text-decoration: none; font-size: 13px; margin-bottom: 10px; }
+.back-link:hover { color: var(--accent); text-decoration: underline; }

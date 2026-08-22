@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   for (const cnj of cnjs) {
     const remoto = await provider.consultarProcesso(cnj).catch(() => null);
     if (!remoto) continue;
-    const { processo } = await upsertProcessoRemoto(remoto, { origem: "descoberto", documento_id: doc?.id ?? null, empresa_id: doc?.empresa_id ?? null, provider: "escavador" });
+    const { processo } = await upsertProcessoRemoto(remoto, { origem: "descoberto", documento_id: doc?.id ?? null, provider: "escavador" });
     novas += await aplicarRemoto(processo, remoto, "escavador");
   }
   await notificarPendentes();

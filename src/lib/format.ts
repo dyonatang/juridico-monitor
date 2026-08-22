@@ -90,7 +90,11 @@ export function tribunalDoCnj(n: string): string | null {
   }
 }
 
-export const fmtData = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
-export const fmtDataHora = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
+export const fmtData = (iso: string | null | undefined) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !isNaN(d.getTime()) ? d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
+};
+export const fmtDataHora = (iso: string | null | undefined) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !isNaN(d.getTime()) ? d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
+};

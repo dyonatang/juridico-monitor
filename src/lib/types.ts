@@ -1,18 +1,10 @@
-export type Empresa = {
-  id: string;
-  nome: string;
-  cnpj: string | null;
-  apelido: string | null;
-  ativo: boolean;
-  created_at: string;
-};
-
 export type DocumentoMonitorado = {
   id: string; // = numero (só dígitos)
   tipo: "CPF" | "CNPJ";
   numero: string;
   nome: string;
-  empresa_id: string | null;
+  apelido: string | null; // nome curto de exibição (ex.: "Caranguejo do Assis" pra um CNPJ)
+  vinculo_id: string | null; // id de outro documento (tipicamente um CNPJ) ao qual este está associado
   observacao: string | null;
   ativo: boolean;
   provider: string | null;
@@ -37,7 +29,6 @@ export type Processo = {
   valor_causa: number | null;
   situacao: string | null;
   descricao: string | null;
-  empresa_id: string | null;
   documento_id: string | null;
   origem: "manual" | "descoberto";
   provider: string | null;
@@ -88,7 +79,6 @@ export type Arquivo = {
   nome: string;
   tamanho: number;
   storage_path: string;
-  empresa_id: string | null;
   documento_id: string | null;
   vinculo: string | null; // como o sistema ligou o PDF a uma empresa/documento
   processos: string[]; // números CNJ (20 dígitos)

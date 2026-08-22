@@ -17,7 +17,6 @@ export default async function Painel() {
       store.listarDocumentos(true),
       store.listarAlertas({ apenasNaoLidos: true }),
       store.movimentacoesRecentes(new Date(Date.now() - 7 * 86400000).toISOString(), 10),
-      store.listarEmpresas(),
     ]);
   } catch (e) {
     return (
@@ -26,28 +25,35 @@ export default async function Painel() {
       </div>
     );
   }
-  const [processos, docs, alertas, movs, empresas] = dados;
-  const nomeEmpresa = new Map(empresas.map((e) => [e.id, e.apelido || e.nome]));
+  const [processos, docs, alertas, movs] = dados;
+  const docsPorId = new Map(docs.map((d) => [d.id, d]));
   const porId = new Map(processos.map((p) => [p.id, p]));
   const comErro = processos.filter((p) => p.ultimo_erro);
   const novosProc = alertas.filter((a) => a.tipo === "novo_processo").length;
 
-  // agrupamento por empresa (+ "Família" para documentos sem empresa)
+  // agrupamento por CNPJ (+ "Família" pra CPFs sem vínculo a um CNPJ)
+  const grupoDoDocumento = (docId: string | null | undefined): string => {
+    if (!docId) return "_fam";
+    const d = docsPorId.get(docId);
+    if (!d) return "_fam";
+    if (d.tipo === "CNPJ") return d.id;
+    return d.vinculo_id && docsPorId.get(d.vinculo_id)?.tipo === "CNPJ" ? d.vinculo_id : "_fam";
+  };
   const grupos = new Map<string, { id: string | null; nome: string; sub: string; ativos: number; alertas: number; ultimo: string | null }>();
-  for (const e of empresas) grupos.set(e.id, { id: e.id, nome: e.apelido || e.nome, sub: e.apelido ? e.nome : "", ativos: 0, alertas: 0, ultimo: null });
-  grupos.set("_fam", { id: null, nome: "Família / sem empresa", sub: `${docs.filter((d) => !d.empresa_id).length} CPF(s) monitorado(s)`, ativos: 0, alertas: 0, ultimo: null });
+  for (const d of docs.filter((d) => d.tipo === "CNPJ")) grupos.set(d.id, { id: d.id, nome: d.apelido || d.nome, sub: d.apelido ? d.nome : "", ativos: 0, alertas: 0, ultimo: null });
+  grupos.set("_fam", { id: null, nome: "Família / sem vínculo", sub: `${docs.filter((d) => d.tipo === "CPF" && grupoDoDocumento(d.id) === "_fam").length} CPF(s) monitorado(s)`, ativos: 0, alertas: 0, ultimo: null });
   for (const p of processos) {
-    const g = grupos.get(p.empresa_id ?? "_fam") ?? grupos.get("_fam")!;
+    const g = grupos.get(grupoDoDocumento(p.documento_id)) ?? grupos.get("_fam")!;
     g.ativos++;
   }
   for (const a of alertas) {
     const p = a.processo_id ? porId.get(a.processo_id) : null;
-    const g = grupos.get(p?.empresa_id ?? "_fam") ?? grupos.get("_fam")!;
+    const g = grupos.get(grupoDoDocumento(p?.documento_id)) ?? grupos.get("_fam")!;
     g.alertas++;
   }
   for (const m of movs) {
     const p = porId.get(m.processo_id);
-    const g = grupos.get(p?.empresa_id ?? "_fam") ?? grupos.get("_fam")!;
+    const g = grupos.get(grupoDoDocumento(p?.documento_id)) ?? grupos.get("_fam")!;
     if (!g.ultimo) g.ultimo = `${fmtDataHora(m.data_hora).slice(0, 5)} — ${m.descricao}`;
   }
 
@@ -147,14 +153,14 @@ export default async function Painel() {
         </Card>
       </div>
 
-      <Card title="Processos por empresa" actions={<Link href="/processos" className="btn sm">Ver todos</Link>}>
+      <Card title="Processos por vínculo" actions={<Link href="/processos" className="btn sm">Ver todos</Link>}>
         <div className="tablewrap">
           <table>
-            <thead><tr><th>Empresa</th><th className="right">Ativos</th><th>Último andamento (7 dias)</th><th>Pendente</th></tr></thead>
+            <thead><tr><th>Vínculo</th><th className="right">Ativos</th><th>Último andamento (7 dias)</th><th>Pendente</th></tr></thead>
             <tbody>
               {[...grupos.values()].filter((g) => g.ativos || g.alertas || g.sub).map((g) =>
                 g.id ? (
-                  <RowLink key={g.nome} href={`/empresas/${g.id}`}>
+                  <RowLink key={g.nome} href={`/documentos/${g.id}`}>
                     <td><b>{g.nome}</b>{g.sub && <div className="sub">{g.sub}</div>}</td>
                     <td className="right">{g.ativos}</td>
                     <td>{g.ultimo ?? <span className="hint">—</span>}</td>
@@ -169,7 +175,7 @@ export default async function Painel() {
                   </tr>
                 ),
               )}
-              {grupos.size === 0 && <tr><td colSpan={4} className="empty">Cadastre uma empresa para começar.</td></tr>}
+              {grupos.size === 0 && <tr><td colSpan={4} className="empty">Cadastre um CPF/CNPJ para começar.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -193,9 +199,9 @@ export default async function Painel() {
           </div>
         </Card>
       )}
-      {nomeEmpresa.size === 0 && processos.length === 0 && (
+      {docs.length === 0 && processos.length === 0 && (
         <div className="notice">
-          <b>Começando do zero?</b> Cadastre as <Link href="/empresas">empresas</Link>, depois os <Link href="/documentos">CPFs/CNPJs</Link> e os <Link href="/processos">processos</Link>.
+          <b>Começando do zero?</b> Cadastre os <Link href="/documentos">CPFs/CNPJs</Link> (empresas e pessoas do grupo) e depois os <Link href="/processos">processos</Link>.
         </div>
       )}
     </>

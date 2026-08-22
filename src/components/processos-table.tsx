@@ -5,17 +5,15 @@ import { RowLink } from "./row-link";
 import type { Processo } from "@/lib/types";
 
 /**
- * Tabela de processos reutilizada em /processos, /documentos/[id] e /empresas/[id].
+ * Tabela de processos reutilizada em /processos e /documentos/[id].
  * Sempre ordenada por data (o chamador já traz a lista ordenada); a linha inteira é clicável.
  */
 export function ProcessosTable({
   processos,
-  nomeEmpresa,
   nomeDocumento,
   mostrarVinculo = true,
 }: {
   processos: Processo[];
-  nomeEmpresa?: (id: string) => string | undefined;
   nomeDocumento?: (id: string) => string | undefined;
   mostrarVinculo?: boolean;
 }) {
@@ -50,7 +48,7 @@ export function ProcessosTable({
                 <div>{p.classe ?? "—"}</div>
                 <div className="sub">{p.assunto}</div>
               </td>
-              {mostrarVinculo && <td>{(p.empresa_id && nomeEmpresa?.(p.empresa_id)) || (p.documento_id && nomeDocumento?.(p.documento_id)) || "—"}</td>}
+              {mostrarVinculo && <td>{(p.documento_id && nomeDocumento?.(p.documento_id)) || "—"}</td>}
               <td className="sub">{fmtDataHora(p.ultima_movimentacao_em)}</td>
               <td className="right">{p.total_movimentacoes ?? 0}</td>
               <td>

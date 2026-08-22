@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as store from "@/lib/store";
-import { cadastrarDocumento, cadastrarEmpresa, cadastrarProcesso, marcarAlertasLidos, ativarMonitoramentoDocumento } from "@/lib/repo";
+import { cadastrarDocumento, cadastrarProcesso, marcarAlertasLidos, ativarMonitoramentoDocumento } from "@/lib/repo";
 import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
 import { importarPdf } from "@/lib/importar";
 import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario } from "@/lib/usuarios";
@@ -15,18 +15,7 @@ export type ActionState = { erro?: string; ok?: string } | undefined;
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null)?.toString() ?? "";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const tudo = () => ["/", "/empresas", "/documentos", "/processos", "/alertas", "/importar"].forEach((p) => revalidatePath(p));
-
-export async function criarEmpresaAction(_: ActionState, fd: FormData): Promise<ActionState> {
-  try {
-    await exigirAdmin();
-    await cadastrarEmpresa({ nome: str(fd, "nome"), cnpj: str(fd, "cnpj"), apelido: str(fd, "apelido") });
-    tudo();
-    return { ok: "Empresa cadastrada." };
-  } catch (e) {
-    return { erro: msg(e) };
-  }
-}
+const tudo = () => ["/", "/documentos", "/processos", "/alertas", "/importar"].forEach((p) => revalidatePath(p));
 
 export async function criarDocumentoAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
@@ -35,7 +24,8 @@ export async function criarDocumentoAction(_: ActionState, fd: FormData): Promis
       tipo: str(fd, "tipo") as "CPF" | "CNPJ",
       numero: str(fd, "numero"),
       nome: str(fd, "nome"),
-      empresa_id: str(fd, "empresa_id") || null,
+      apelido: str(fd, "apelido") || null,
+      vinculo_id: str(fd, "vinculo_id") || null,
       observacao: str(fd, "observacao"),
     });
     tudo();
@@ -51,7 +41,6 @@ export async function criarProcessoAction(_: ActionState, fd: FormData): Promise
     const r = await cadastrarProcesso({
       numero: str(fd, "numero"),
       descricao: str(fd, "descricao"),
-      empresa_id: str(fd, "empresa_id") || null,
       documento_id: str(fd, "documento_id") || null,
     });
     tudo();
@@ -116,7 +105,7 @@ export async function importarPdfAction(_: ImportState, fd: FormData): Promise<I
   }
   const files = fd.getAll("arquivos").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) return { erro: "Escolha pelo menos um PDF." };
-  const empresa_id = str(fd, "empresa_id") || null;
+  const documento_id = str(fd, "documento_id") || null;
   const resultados: NonNullable<ImportState>["resultados"] = [];
   for (const f of files) {
     if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
@@ -124,7 +113,7 @@ export async function importarPdfAction(_: ImportState, fd: FormData): Promise<I
       continue;
     }
     try {
-      const a = await importarPdf({ nome: f.name, bytes: Buffer.from(await f.arrayBuffer()), empresa_id });
+      const a = await importarPdf({ nome: f.name, bytes: Buffer.from(await f.arrayBuffer()), documento_id });
       resultados.push({ nome: f.name, processos: a.resultado, resumo: a.analise?.resumo ?? null, erro: null });
     } catch (e) {
       resultados.push({ nome: f.name, processos: [], resumo: null, erro: msg(e) });

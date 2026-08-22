@@ -8,7 +8,6 @@ const links: [string, string][] = [
   ["/processos", "Processos"],
   ["/importar", "Importar PDF"],
   ["/documentos", "CPFs / CNPJs"],
-  ["/empresas", "Empresas"],
   ["/alertas", "Alertas"],
 ];
 

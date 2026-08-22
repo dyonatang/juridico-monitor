@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { getApps, initializeApp, cert, applicationDefault, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore, type Query, type DocumentSnapshot } from "firebase-admin/firestore";
-import type { Alerta, Arquivo, DocumentoMonitorado, Empresa, Movimentacao, Processo } from "./types";
+import type { Alerta, Arquivo, DocumentoMonitorado, Movimentacao, Processo } from "./types";
 
 let app: App | null = null;
 let resolvedProjectId: string | undefined;
@@ -71,19 +71,6 @@ const descPor = <T extends { created_at?: string }>(campo: keyof T) => (a: T, b:
 /** Remove chaves undefined (Firestore rejeita undefined). */
 const limpar = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
-// ---------------------------------------------------------------- Empresas
-export async function listarEmpresas(apenasAtivas = false): Promise<Empresa[]> {
-  let q: Query = fs().collection("empresas");
-  if (apenasAtivas) q = q.where("ativo", "==", true);
-  return (await all<Empresa>(q)).sort(desc);
-}
-export async function criarEmpresa(data: Omit<Empresa, "id" | "created_at" | "ativo">): Promise<Empresa> {
-  const ref = fs().collection("empresas").doc();
-  const emp: Empresa = { id: ref.id, ...data, ativo: true, created_at: agora() };
-  await ref.set(limpar({ ...emp, id: undefined }));
-  return emp;
-}
-
 // ------------------------------------------------------------- Documentos
 export async function listarDocumentos(apenasAtivos = false): Promise<DocumentoMonitorado[]> {
   let q: Query = fs().collection("documentos");
@@ -118,9 +105,8 @@ export async function criarDocumento(
 }
 
 // -------------------------------------------------------------- Processos
-export async function listarProcessos(f: { empresa_id?: string; documento_id?: string; apenasAtivos?: boolean } = {}): Promise<Processo[]> {
+export async function listarProcessos(f: { documento_id?: string; apenasAtivos?: boolean } = {}): Promise<Processo[]> {
   let q: Query = fs().collection("processos");
-  if (f.empresa_id) q = q.where("empresa_id", "==", f.empresa_id);
   if (f.documento_id) q = q.where("documento_id", "==", f.documento_id);
   if (f.apenasAtivos) q = q.where("ativo", "==", true);
   return (await all<Processo>(q)).sort(descPor("ultima_movimentacao_em"));
@@ -149,7 +135,7 @@ export async function contarDocumentosAtivos() {
 }
 
 // ---------------------------------------------------------- Atualização / exclusão genéricas
-export type Colecao = "empresas" | "documentos" | "processos";
+export type Colecao = "documentos" | "processos";
 export async function atualizar(col: Colecao | "alertas", id: string, patch: Record<string, unknown>) {
   await fs().collection(col).doc(id).update(limpar(patch));
 }
@@ -162,15 +148,12 @@ export async function excluir(col: Colecao, id: string) {
       r.docs.forEach((d) => batch.delete(d.ref));
     }
   } else {
-    const campo = col === "empresas" ? "empresa_id" : "documento_id";
-    for (const c of col === "empresas" ? ["processos", "documentos"] : ["processos"]) {
-      const r = await db.collection(c).where(campo, "==", id).get();
-      r.docs.forEach((d) => batch.update(d.ref, { [campo]: null }));
-    }
-    if (col === "documentos") {
-      const r = await db.collection("alertas").where("documento_id", "==", id).get();
-      r.docs.forEach((d) => batch.delete(d.ref));
-    }
+    const rProc = await db.collection("processos").where("documento_id", "==", id).get();
+    rProc.docs.forEach((d) => batch.update(d.ref, { documento_id: null }));
+    const rVinculados = await db.collection("documentos").where("vinculo_id", "==", id).get();
+    rVinculados.docs.forEach((d) => batch.update(d.ref, { vinculo_id: null }));
+    const rAlertas = await db.collection("alertas").where("documento_id", "==", id).get();
+    rAlertas.docs.forEach((d) => batch.delete(d.ref));
   }
   batch.delete(db.collection(col).doc(id));
   await batch.commit();
