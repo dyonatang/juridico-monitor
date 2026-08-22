@@ -46,7 +46,8 @@ next-env.d.ts
 firebase-key.json
 *-firebase-adminsdk-*.json
 firebase-key*
-.claude/
+.claude/*
+!.claude/skills/
 Cadastro/
 agente-jusbr/perfil/
 agente-jusbr/logs/

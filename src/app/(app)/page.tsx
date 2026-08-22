@@ -64,10 +64,24 @@ export default async function Painel() {
           <h1>Painel</h1>
           <p style={{ textTransform: "capitalize" }}>{hoje()}</p>
         </div>
-        <form action={sincronizarTudoAction}>
-          <SubmitButton tone="secondary">Sincronizar agora</SubmitButton>
-        </form>
+        <div className="actions-row">
+          <a
+            href="https://portaldeservicos.pdpj.jus.br/consulta"
+            target="_blank"
+            rel="noopener"
+            className="btn"
+            title="Abre o jus.br numa aba nova. Depois de logar, peça ao Claude: /sincronizar-jusbr"
+          >
+            Sincronizar com jus.br
+          </a>
+          <form action={sincronizarTudoAction}>
+            <SubmitButton tone="secondary">Sincronizar agora</SubmitButton>
+          </form>
+        </div>
       </div>
+      <p className="hint" style={{ marginTop: -14, marginBottom: 18 }}>
+        &quot;Sincronizar com jus.br&quot; abre o portal numa aba nova — depois de logar, peça ao Claude: <code>/sincronizar-jusbr</code>.
+      </p>
 
       <div className="stats">
         <Stat href="/processos" label="Processos ativos" value={processos.length} sub={`${processos.filter((p) => p.origem === "descoberto").length} descobertos automaticamente`} />
