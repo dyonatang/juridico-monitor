@@ -31,9 +31,10 @@ env:
   - variable: SESSION_SECRET
     secret: SESSION_SECRET
 
-  # Leitura de PDF por IA (recomendado)
-  - variable: ANTHROPIC_API_KEY
-    secret: ANTHROPIC_API_KEY
+  # Leitura de PDF por IA (recomendado) — descomente depois de criar o segredo:
+  #   firebase apphosting:secrets:set ANTHROPIC_API_KEY
+  # - variable: ANTHROPIC_API_KEY
+  #   secret: ANTHROPIC_API_KEY
 
   # Provedor premium (opcional)
   # - variable: MONITOR_PROVIDER
