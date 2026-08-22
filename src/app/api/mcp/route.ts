@@ -2,6 +2,7 @@ import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import * as store from "@/lib/store";
+import { compararSeguro } from "@/lib/auth";
 import { formatarCnj, formatarDocumento, fmtData, fmtDataHora, somenteDigitos } from "@/lib/format";
 import { cadastrarDocumento, cadastrarProcesso, marcarAlertasLidos } from "@/lib/repo";
 import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
@@ -211,7 +212,7 @@ const verificarToken = (req: Request, bearer?: string): AuthInfo | undefined => 
   if (!esperado) return undefined;
   const daUrl = new URL(req.url).searchParams.get("token") ?? undefined;
   const recebido = bearer ?? daUrl;
-  if (recebido !== esperado) return undefined;
+  if (!recebido || !compararSeguro(recebido, esperado)) return undefined;
   return { token: recebido, clientId: "juridico-monitor", scopes: [] };
 };
 

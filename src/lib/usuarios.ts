@@ -65,20 +65,55 @@ export async function contarAdmins() {
   return (await store.fs().collection("usuarios").where("papel", "==", "admin").where("ativo", "==", true).count().get()).data().count;
 }
 
+const LIMITE_TENTATIVAS = 8;
+const JANELA_MIN = 15;
+const BLOQUEIO_MIN = 15;
+
+/** Bloqueio por login com falhas repetidas (Firestore, vale entre instâncias). */
+async function loginBloqueado(l: string): Promise<boolean> {
+  const doc = await store.fs().collection("login_tentativas").doc(l).get();
+  if (!doc.exists) return false;
+  const d = doc.data() as { bloqueado_ate?: string | null };
+  return !!d.bloqueado_ate && new Date(d.bloqueado_ate).getTime() > Date.now();
+}
+
+async function registrarFalha(l: string) {
+  const ref = store.fs().collection("login_tentativas").doc(l);
+  const doc = await ref.get();
+  const agora = Date.now();
+  const d = doc.exists ? (doc.data() as { falhas?: number; ultima_tentativa?: string }) : {};
+  const dentroDaJanela = d.ultima_tentativa && agora - new Date(d.ultima_tentativa).getTime() < JANELA_MIN * 60_000;
+  const falhas = (dentroDaJanela ? (d.falhas ?? 0) : 0) + 1;
+  const bloqueado_ate = falhas >= LIMITE_TENTATIVAS ? new Date(agora + BLOQUEIO_MIN * 60_000).toISOString() : null;
+  await ref.set({ falhas, ultima_tentativa: store.agora(), bloqueado_ate }, { merge: true });
+}
+
+async function limparFalhas(l: string) {
+  await store.fs().collection("login_tentativas").doc(l).delete().catch(() => undefined);
+}
+
 /**
  * Autentica por login/senha. Ordem: banco → .env (emergência).
  * No login pelo .env, garante que esse usuário exista no banco como admin.
+ * Bloqueia temporariamente após tentativas repetidas (freia força bruta contra
+ * um login conhecido, já que a senha de emergência do .env pode ser curta).
  */
 export async function autenticar(login: string, senha: string): Promise<Usuario | null> {
   const l = normalizarLogin(login);
+  if (await loginBloqueado(l)) throw new Error("Muitas tentativas com esse usuário. Aguarde alguns minutos e tente novamente.");
+
   const u = await getUsuario(l).catch(() => null);
   if (u) {
-    if (!u.ativo) return null;
-    if (!conferirSenha(senha, u.senha_hash)) return null;
+    if (!u.ativo || !conferirSenha(senha, u.senha_hash)) {
+      await registrarFalha(l);
+      return null;
+    }
+    await limparFalhas(l);
     await atualizarUsuario(l, { ultimo_acesso: store.agora() }).catch(() => null);
     return u;
   }
   if (credenciaisValidas(login.trim(), senha)) {
+    await limparFalhas(l);
     // acesso de emergência: cria/garante o admin a partir do .env
     try {
       const criado = await criarUsuario({ nome: login.trim(), login: l, senha, papel: "admin" });
@@ -87,6 +122,7 @@ export async function autenticar(login: string, senha: string): Promise<Usuario 
       return { id: l, login: l, nome: login.trim(), papel: "admin", senha_hash: null, ativo: true, ultimo_acesso: null, created_at: store.agora() };
     }
   }
+  await registrarFalha(l);
   return null;
 }
 

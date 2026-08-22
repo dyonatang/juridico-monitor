@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as store from "@/lib/store";
+import { compararSeguro } from "@/lib/auth";
 import { somenteDigitos } from "@/lib/format";
 import { provedorPremium } from "@/lib/providers";
 import { aplicarRemoto, upsertProcessoRemoto } from "@/lib/sync";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  * presentes no JSON e re-consulta cada um via API.
  */
 export async function POST(req: NextRequest) {
-  if (process.env.WEBHOOK_SECRET && req.nextUrl.searchParams.get("secret") !== process.env.WEBHOOK_SECRET) {
+  if (process.env.WEBHOOK_SECRET && !compararSeguro(req.nextUrl.searchParams.get("secret") ?? "", process.env.WEBHOOK_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const texto = await req.text();

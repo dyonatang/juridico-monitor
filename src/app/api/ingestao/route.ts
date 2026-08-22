@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as store from "@/lib/store";
+import { compararSeguro } from "@/lib/auth";
 import { idsConhecidos, ingerirDocumento, ingerirProcesso, type JusbrDocumento, type JusbrProcesso } from "@/lib/jusbr";
 import { notificarPendentes } from "@/lib/notify";
 import { formatarDocumento } from "@/lib/format";
@@ -33,7 +34,7 @@ function autorizado(req: NextRequest) {
   const t = process.env.INGEST_TOKEN;
   if (!t) return false;
   const h = req.headers.get("authorization") ?? "";
-  return h === `Bearer ${t}`;
+  return compararSeguro(h, `Bearer ${t}`);
 }
 
 export async function GET(req: NextRequest) {

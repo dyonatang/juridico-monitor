@@ -15,7 +15,8 @@ export async function loginAction(_: LoginState, fd: FormData): Promise<LoginSta
   try {
     u = await autenticar(usuario, senha);
   } catch (e) {
-    return { erro: `Falha ao consultar usuários: ${e instanceof Error ? e.message : e}` };
+    const msg = e instanceof Error ? e.message : String(e);
+    return { erro: msg.startsWith("Muitas tentativas") ? msg : `Falha ao consultar usuários: ${msg}` };
   }
   if (!u) {
     await new Promise((r) => setTimeout(r, 600)); // desacelera tentativas

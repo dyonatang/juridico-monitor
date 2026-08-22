@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { compararSeguro } from "@/lib/auth";
 import { sincronizarTudo } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +11,9 @@ export const maxDuration = 300;
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  const ok = !secret || auth === `Bearer ${secret}` || req.nextUrl.searchParams.get("secret") === secret;
+  const auth = req.headers.get("authorization") ?? "";
+  const daUrl = req.nextUrl.searchParams.get("secret") ?? "";
+  const ok = !secret || compararSeguro(auth, `Bearer ${secret}`) || compararSeguro(daUrl, secret);
   if (!ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const resultado = await sincronizarTudo();
