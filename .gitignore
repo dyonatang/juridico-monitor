@@ -48,3 +48,7 @@ firebase-key.json
 firebase-key*
 .claude/
 Cadastro/
+agente-jusbr/perfil/
+agente-jusbr/logs/
+agente-jusbr/node_modules/
+agente-jusbr/.env

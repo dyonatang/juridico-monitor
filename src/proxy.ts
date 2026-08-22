@@ -23,5 +23,5 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   // Ignora APIs com token próprio, internos do Next e arquivos estáticos (ícones, manifest etc.)
-  matcher: ["/((?!api/mcp|api/cron|api/webhooks|_next/|.*\\..*).*)"],
+  matcher: ["/((?!api/mcp|api/cron|api/webhooks|api/ingestao|_next/|.*\\..*).*)"],
 };

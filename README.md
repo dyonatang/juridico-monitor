@@ -100,6 +100,9 @@ Depois, em **CPFs / CNPJs** clique em *Ativar* nos documentos já cadastrados pa
 
 > ⚠️ O adaptador do Escavador segue a documentação pública v2; confirme os campos de `/monitoramentos` e do callback com o plano contratado. O da Judit segue a doc oficial de `tracking` e `lawsuits`.
 
+## Agente jus.br (varredura e peças, sem provedor pago)
+Na pasta [`agente-jusbr/`](agente-jusbr/README.md) há um robô que roda no servidor do grupo com o login gov.br do usuário: varre os CPFs/CNPJs no **jus.br**, descobre processos novos, atualiza movimentações (com partes) e baixa as **peças** (texto) para o sistema via `POST /api/ingestao` (token `INGEST_TOKEN`). Instalação, agendamento e re-login no README dele.
+
 ## Estrutura
 
 ```
@@ -110,7 +113,9 @@ src/lib/sync.ts              motor: consulta → diff de movimentações → ale
 src/lib/notify.ts            e-mail (Resend) e webhook
 src/lib/repo.ts              cadastros (usados pelo dashboard e pelo MCP)
 src/lib/leitor.ts            motor de leitura de PDF: texto local (pdf-parse) + análise estruturada pelo Claude
-src/lib/importar.ts          importação: Storage → leitura → vínculo com empresa → cadastro dos processos
+src/lib/importar.ts          importação de PDF: Storage → leitura → vínculo com empresa → cadastro dos processos
+src/lib/jusbr.ts             ingestão do agente jus.br (processos com partes/movimentos + peças em texto)
+src/app/api/ingestao         API do agente (GET alvos · POST processo/documento/status)
 src/lib/storage.ts           Cloud Storage (PDFs)
 src/lib/auth.ts              sessão por cookie assinado (login)
 src/app/api/cron/sync        sincronização periódica (Cloud Scheduler)

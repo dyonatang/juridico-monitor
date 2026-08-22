@@ -96,6 +96,9 @@ export type Arquivo = {
   texto_preview: string;
   avisos: string[];
   status: "ok" | "sem_processo";
+  origem?: "upload" | "jusbr";
+  mime?: string;
+  jusbr?: { idCodex: string; idOrigem: string | null; tipo: string | null; dataHoraJuntada: string | null; sigilo: string | null };
   created_at: string;
 };
 

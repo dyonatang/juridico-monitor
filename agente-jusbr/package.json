@@ -1,0 +1,18 @@
+{
+  "name": "agente-jusbr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agente que lê o jus.br (portal de serviços do PJe) com o login gov.br do usuário e alimenta o Jurídico Monitor.",
+  "scripts": {
+    "instalar": "npm install && npx playwright install chromium",
+    "login": "node agente.mjs login",
+    "rodar": "node agente.mjs rodar",
+    "testar": "node agente.mjs testar"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "playwright": "^1.50.0"
+  },
+  "engines": { "node": ">=20" }
+}

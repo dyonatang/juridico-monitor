@@ -58,7 +58,7 @@ export async function importarPdf(input: {
   let analise: Analise | null = null;
   if (leitorIaDisponivel()) {
     try {
-      analise = await analisarComClaude(input.bytes);
+      analise = await analisarComClaude({ pdf: input.bytes });
     } catch (e) {
       avisos.push(`Leitura por IA falhou: ${e instanceof Error ? e.message : e}`);
     }
@@ -113,6 +113,8 @@ export async function importarPdf(input: {
     texto_preview: texto.slice(0, 3000),
     avisos,
     status: cnjs.size > 0 ? "ok" : "sem_processo",
+    origem: "upload",
+    mime: "application/pdf",
     created_at: store.agora(),
   };
   await store.salvarArquivo(arquivo);

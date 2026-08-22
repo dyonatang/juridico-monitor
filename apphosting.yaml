@@ -30,6 +30,8 @@ env:
     secret: WEBHOOK_SECRET
   - variable: SESSION_SECRET
     secret: SESSION_SECRET
+  - variable: INGEST_TOKEN
+    secret: INGEST_TOKEN
   - variable: ANTHROPIC_API_KEY
     secret: ANTHROPIC_API_KEY
   # Leitura de PDF por IA (recomendado) — descomente depois de criar o segredo:
