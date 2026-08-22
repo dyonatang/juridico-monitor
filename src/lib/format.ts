@@ -67,7 +67,7 @@ const UF_TJ: Record<string, string> = {
   "01": "tjac", "02": "tjal", "03": "tjap", "04": "tjam", "05": "tjba", "06": "tjce", "07": "tjdft",
   "08": "tjes", "09": "tjgo", "10": "tjma", "11": "tjmt", "12": "tjms", "13": "tjmg", "14": "tjpa",
   "15": "tjpb", "16": "tjpr", "17": "tjpe", "18": "tjpi", "19": "tjrj", "20": "tjrn", "21": "tjrs",
-  "22": "tjro", "23": "tjrr", "24": "tjsc", "25": "tjsp", "26": "tjse", "27": "tjto",
+  "22": "tjro", "23": "tjrr", "24": "tjsc", "25": "tjse", "26": "tjsp", "27": "tjto",
 };
 
 /** Deduz o alias DataJud (ex.: tjes, trt17, trf2) a partir do número CNJ. */
