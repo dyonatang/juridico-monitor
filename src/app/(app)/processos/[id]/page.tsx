@@ -67,13 +67,21 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
                 <li key={a.id} className="doc">
                   <span className="stripe" />
                   <div>
-                    <a href={`/api/arquivos/${a.id}`} target="_blank" rel="noopener" className="t link">{a.analise?.tipo_documento ?? a.nome}</a>
+                    <span className="t">{a.analise?.tipo_documento ?? a.nome}</span>
                     <span className="sub"> · {a.nome}</span>
                     {a.analise?.resumo && <div className="m">{a.analise.resumo}</div>}
                     {a.analise?.acao_recomendada && <div className="m" style={{ color: "var(--accent)" }}>⚠️ {a.analise.acao_recomendada}</div>}
                     <div className="when">{fmtDataHora(a.created_at)}</div>
                   </div>
-                  <span />
+                  <a
+                    href={`/api/arquivos/${a.id}`}
+                    target="_blank"
+                    rel="noopener"
+                    className="btn sm"
+                    style={{ textDecoration: "none", flexShrink: 0 }}
+                  >
+                    Abrir PDF ↗
+                  </a>
                 </li>
               ))}
             </ul>
