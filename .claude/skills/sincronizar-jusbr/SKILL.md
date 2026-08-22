@@ -141,8 +141,8 @@ Para cada processo, compare a "Data Último Movimento" do jus.br com o
        "documento": {
          "nome": "nome do documento",
          "juntado_em": "2026-07-01",
-         "resumo": "resumo seu, 2-4 frases, do que o documento decidiu de fato",
-         "texto": "texto integral extraído, real, sem paráfrase"
+         "resumo": "resumo estilo advogado explicando pro cliente — ver regra abaixo",
+         "texto": "texto integral extraído, real, sem paráfrase — só uso interno, NUNCA vai pro alerta"
        }
      }
    }
@@ -150,6 +150,19 @@ Para cada processo, compare a "Data Último Movimento" do jus.br com o
    `arquivar: true` quando o movimento mostrar "Arquivado Definitivamente" — isso marca
    `ativo: false` no processo (não precisa mais monitorar).
    `documento` é opcional — só inclua se achou algo substantivo pra aquele processo.
+
+   **Regra do `resumo` — é o que o usuário vai ler, capriche nisso:**
+   Escreva como um advogado explicando pro cliente em 3-6 frases, tom direto e
+   conversacional, sem juridiquês. Sempre diga:
+   - o resultado prático (ganhou, perdeu, foi arquivado, ficou pendente de quê);
+   - o porquê em uma frase simples (não recite a ementa);
+   - se tem valor de dinheiro envolvido, dinheiro em risco, ou prazo, destaque isso;
+   - se o processo não acabou, diga claramente o que falta acontecer.
+   O campo `texto` (extração integral) existe só como registro interno de onde veio o
+   resumo — **ele nunca deve ir pro `mensagem` do alerta nem aparecer pro usuário**. Já
+   aconteceu de colar resumo + "--- Texto integral ---" + o texto bruto inteiro dentro
+   do alerta — isso é exatamente o que não fazer; o usuário reclamou e teve que ser
+   corrigido depois. O alerta mostra SÓ o `resumo`.
 
 2. Escreva um script tsx efêmero que lê esse JSON e, pra cada entrada:
    - `store.getProcesso(numero)` — se não achar, o numero_cnj está errado, confira os
@@ -164,9 +177,9 @@ Para cada processo, compare a "Data Último Movimento" do jus.br com o
    - `store.atualizar("processos", processo.id, { ultimo_check, ultimo_erro: null,
      total_movimentacoes, ultima_movimentacao_em, ...(arquivar ? {ativo:false} : {}) })`.
    - Se tiver `documento`, `store.inserirAlertas([{ tipo: "nova_movimentacao",
-     processo_id, documento_id: processo.documento_id, titulo, mensagem: resumo +
-     "\n\n--- Texto integral ---\n" + texto }])` — só se `inseridas.length > 0` (não
-     duplica alerta em reruns).
+     processo_id, documento_id: processo.documento_id, titulo, mensagem: resumo }])` —
+     **`mensagem` é só o `resumo`, nunca concatene o `texto` integral aqui** — só se
+     `inseridas.length > 0` (não duplica alerta em reruns).
 3. Rode com `npx tsx --env-file=.env.local <script>.mts`.
 4. Confira a saída: cada processo deve mostrar quantas movimentações novas entraram e
    qual ficou sendo a última data.
@@ -193,3 +206,6 @@ caso o usuário queira olhar algo). Escreva um resumo curto e direto:
 - Não inventar texto de movimentação ou decisão — sempre o texto real extraído.
 - Não usar heredoc do Bash pra gravar conteúdo com acentuação — use o `Write` tool.
 - Não deixar scripts `.mts`/`.json` temporários no repositório depois de terminar.
+- Não colar o texto integral do documento dentro do `mensagem` do alerta — o alerta
+  leva só o resumo estilo advogado (passo 6). O texto integral é matéria-prima pra
+  você escrever o resumo, não o produto final que o usuário vê.
