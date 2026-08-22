@@ -151,6 +151,15 @@ Para cada processo, compare a "Data Último Movimento" do jus.br com o
    `ativo: false` no processo (não precisa mais monitorar).
    `documento` é opcional — só inclua se achou algo substantivo pra aquele processo.
 
+   **Partes (polo_ativo/polo_passivo):** confira `store.getProcesso(numero)` antes de
+   escrever — se `polo_ativo`/`polo_passivo` estiverem vazios (comum em processos
+   criminais e trabalhistas, onde o DataJud omite as partes por LGPD), e você já viu
+   os nomes reais na tela do jus.br (na aba Documentos/Movimentos, não no cabeçalho —
+   o cabeçalho às vezes mostra "Nome da parte ocultada nos termos da Res. 121/2010 do
+   CNJ", que é só um efeito de exibição, não significa ausência de dado), inclua
+   `"polo_ativo"` e `"polo_passivo"` no script de ingestão junto com os movimentos.
+   Nunca deixe a capa vazia se você já sabe quem são as partes de verdade.
+
    **Regra do `resumo` — é o que o usuário vai ler, capriche nisso:**
    Escreva como um advogado explicando pro cliente em 3-6 frases, tom direto e
    conversacional, sem juridiquês. Sempre diga:

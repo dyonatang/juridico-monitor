@@ -11,6 +11,12 @@ import type { Arquivo, ResultadoProcessoImportado } from "./types";
 const normalizar = (s: string) =>
   s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\b(ltda|me|epp|s\/a|sa|eireli)\b/g, "").replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 
+/** Nomes das partes de um polo, segundo a análise da IA (ex.: "Fulano; Empresa X LTDA"). */
+function poloDeAnalise(analise: Analise | null, polo: "ativo" | "passivo"): string | null {
+  const nomes = (analise?.partes ?? []).filter((p) => p.polo === polo).map((p) => p.nome);
+  return nomes.length ? nomes.join("; ") : null;
+}
+
 /** Tenta descobrir a qual CPF/CNPJ do grupo o PDF se refere. */
 async function vincular(analise: Analise | null, texto: string) {
   const docs = await store.listarDocumentos();
@@ -89,17 +95,38 @@ export async function importarPdf(input: {
   }
 
   const descricaoBase = analise ? [analise.tipo_documento, analise.assunto].filter(Boolean).join(" — ") : `Importado de ${nomeLimpo}`;
+  const poloAtivoIa = poloDeAnalise(analise, "ativo");
+  const poloPassivoIa = poloDeAnalise(analise, "passivo");
+  const resumoStatusIa = analise
+    ? [analise.resumo, analise.acao_recomendada ? `⚠️ ${analise.acao_recomendada}` : null].filter(Boolean).join("\n\n")
+    : null;
+
+  // O DataJud costuma omitir as partes em processos criminais e trabalhistas (LGPD) —
+  // quando a IA leu o próprio documento e sabe quem são as partes, completamos a capa
+  // com isso em vez de deixar em branco (tanto num processo recém-criado quanto num
+  // que já existia e ficou incompleto de uma sincronização anterior).
+  const completarCapa = async (numeroCnj: string, atual: { polo_ativo: string | null; polo_passivo: string | null; descricao: string | null; resumo_status: string | null }) => {
+    const patch: Record<string, unknown> = {};
+    if (!atual.polo_ativo && poloAtivoIa) patch.polo_ativo = poloAtivoIa;
+    if (!atual.polo_passivo && poloPassivoIa) patch.polo_passivo = poloPassivoIa;
+    if ((!atual.descricao || atual.descricao.startsWith("Importado de ")) && analise) patch.descricao = descricaoBase.slice(0, 120);
+    if (!atual.resumo_status && resumoStatusIa) patch.resumo_status = resumoStatusIa;
+    if (Object.keys(patch).length) await store.atualizar("processos", numeroCnj, patch);
+  };
+
   const processos: ResultadoProcessoImportado[] = [];
   for (const numero of cnjs) {
     const existente = await store.getProcesso(numero);
     if (existente) {
       processos.push({ numero, numero_formatado: existente.numero_formatado, criado: false, novas: 0, erro: null });
       if (!existente.documento_id && documento_id) await store.atualizar("processos", numero, { documento_id });
+      await completarCapa(numero, existente);
       continue;
     }
     try {
       const r = await cadastrarProcesso({ numero, descricao: descricaoBase.slice(0, 120), documento_id });
       processos.push({ numero, numero_formatado: r.processo.numero_formatado, criado: true, novas: r.novas, erro: r.erro });
+      await completarCapa(numero, r.processo);
     } catch (e) {
       processos.push({ numero, numero_formatado: formatarCnj(numero), criado: false, novas: 0, erro: e instanceof Error ? e.message : String(e) });
     }
