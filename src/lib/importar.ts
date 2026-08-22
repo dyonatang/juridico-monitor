@@ -107,7 +107,7 @@ export async function importarPdf(input: {
   // partes; senão cai pro tipo+assunto crus, e por último no nome do arquivo.
   const partesResumo = poloAtivoIa && poloPassivoIa ? `${nomeCurto(poloAtivoIa)} x ${nomeCurto(poloPassivoIa)}` : null;
   const tipoCurto = analise?.tipo_documento ? analise.tipo_documento.split(/[,(]/)[0].trim() : null;
-  const assuntoCurto = analise?.assunto ? analise.assunto.split(";")[0].trim() : null;
+  const assuntoCurto = nomeCurto(analise?.assunto ?? null, 55);
   const descricaoBase = partesResumo
     ? [tipoCurto, `${partesResumo}${assuntoCurto ? ` (${assuntoCurto})` : ""}`].filter(Boolean).join(" — ")
     : analise
