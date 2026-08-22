@@ -17,6 +17,13 @@ function poloDeAnalise(analise: Analise | null, polo: "ativo" | "passivo"): stri
   return nomes.length ? nomes.join("; ") : null;
 }
 
+/** Primeiro nome de um polo (corta em ";" ou "(observação)"), curto o bastante pra caber numa descrição. */
+function nomeCurto(s: string | null, max = 30): string | null {
+  if (!s) return null;
+  const primeiro = s.split(";")[0].split(" (")[0].trim();
+  return primeiro.length > max ? `${primeiro.slice(0, max - 1)}…` : primeiro;
+}
+
 /** Tenta descobrir a qual CPF/CNPJ do grupo o PDF se refere. */
 async function vincular(analise: Analise | null, texto: string) {
   const docs = await store.listarDocumentos();
@@ -94,9 +101,18 @@ export async function importarPdf(input: {
     vinculo = v.como;
   }
 
-  const descricaoBase = analise ? [analise.tipo_documento, analise.assunto].filter(Boolean).join(" — ") : `Importado de ${nomeLimpo}`;
   const poloAtivoIa = poloDeAnalise(analise, "ativo");
   const poloPassivoIa = poloDeAnalise(analise, "passivo");
+  // Descrição curta e padronizada: "Tipo — Parte1 x Parte2 (assunto)" quando temos as
+  // partes; senão cai pro tipo+assunto crus, e por último no nome do arquivo.
+  const partesResumo = poloAtivoIa && poloPassivoIa ? `${nomeCurto(poloAtivoIa)} x ${nomeCurto(poloPassivoIa)}` : null;
+  const tipoCurto = analise?.tipo_documento ? analise.tipo_documento.split(/[,(]/)[0].trim() : null;
+  const assuntoCurto = analise?.assunto ? analise.assunto.split(";")[0].trim() : null;
+  const descricaoBase = partesResumo
+    ? [tipoCurto, `${partesResumo}${assuntoCurto ? ` (${assuntoCurto})` : ""}`].filter(Boolean).join(" — ")
+    : analise
+      ? [analise.tipo_documento, analise.assunto].filter(Boolean).join(" — ")
+      : `Importado de ${nomeLimpo}`;
   const resumoStatusIa = analise
     ? [analise.resumo, analise.acao_recomendada ? `⚠️ ${analise.acao_recomendada}` : null].filter(Boolean).join("\n\n")
     : null;
@@ -109,7 +125,8 @@ export async function importarPdf(input: {
     const patch: Record<string, unknown> = {};
     if (!atual.polo_ativo && poloAtivoIa) patch.polo_ativo = poloAtivoIa;
     if (!atual.polo_passivo && poloPassivoIa) patch.polo_passivo = poloPassivoIa;
-    if ((!atual.descricao || atual.descricao.startsWith("Importado de ")) && analise) patch.descricao = descricaoBase.slice(0, 120);
+    const descricaoGenerica = !atual.descricao || atual.descricao.startsWith("Importado de ") || (!!partesResumo && !atual.descricao.includes(" x "));
+    if (descricaoGenerica && analise) patch.descricao = descricaoBase.slice(0, 160);
     if (!atual.resumo_status && resumoStatusIa) patch.resumo_status = resumoStatusIa;
     if (Object.keys(patch).length) await store.atualizar("processos", numeroCnj, patch);
   };
@@ -124,7 +141,7 @@ export async function importarPdf(input: {
       continue;
     }
     try {
-      const r = await cadastrarProcesso({ numero, descricao: descricaoBase.slice(0, 120), documento_id });
+      const r = await cadastrarProcesso({ numero, descricao: descricaoBase.slice(0, 160), documento_id });
       processos.push({ numero, numero_formatado: r.processo.numero_formatado, criado: true, novas: r.novas, erro: r.erro });
       await completarCapa(numero, r.processo);
     } catch (e) {
