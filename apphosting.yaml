@@ -9,14 +9,14 @@ runConfig:
 
 env:
   - variable: APP_URL
-    value: https://SEU-BACKEND.web.app          # troque pela URL final
-    availability: [BUILD, RUNTIME]
+    value: https://SEU-BACKEND.web.app # troque pela URL final
+    availability: [ BUILD, RUNTIME ]
   - variable: FIREBASE_STORAGE_BUCKET
     value: juridico-assis-arquivos
-    availability: [RUNTIME]
+    availability: [ RUNTIME ]
   - variable: APP_GRUPO
     value: Grupo Giovanelli · Assis
-    availability: [RUNTIME]
+    availability: [ RUNTIME ]
 
   - variable: DASHBOARD_USER
     secret: DASHBOARD_USER
@@ -30,7 +30,8 @@ env:
     secret: WEBHOOK_SECRET
   - variable: SESSION_SECRET
     secret: SESSION_SECRET
-
+  - variable: ANTHROPIC_API_KEY
+    secret: ANTHROPIC_API_KEY
   # Leitura de PDF por IA (recomendado) — descomente depois de criar o segredo:
   #   firebase apphosting:secrets:set ANTHROPIC_API_KEY
   # - variable: ANTHROPIC_API_KEY
