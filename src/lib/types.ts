@@ -98,3 +98,16 @@ export type Arquivo = {
   status: "ok" | "sem_processo";
   created_at: string;
 };
+
+export type Papel = "admin" | "leitura";
+
+export type Usuario = {
+  id: string; // = login
+  login: string;
+  nome: string;
+  papel: Papel;
+  senha_hash: string | null;
+  ativo: boolean;
+  ultimo_acesso: string | null;
+  created_at: string;
+};
