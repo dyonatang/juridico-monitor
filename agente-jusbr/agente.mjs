@@ -62,20 +62,31 @@ const avisarSistema = (nivel, mensagem) => sistema("POST", { tipo: "status", niv
 async function abrir(headless = cfg.headless) {
   const ctx = await chromium.launchPersistentContext(cfg.perfil, {
     headless,
+    channel: "chromium", // Chromium completo (mesma identidade do modo visível) em vez do "headless shell"
     viewport: { width: 1400, height: 900 },
     locale: "pt-BR",
     args: ["--disable-blink-features=AutomationControlled"],
+    ignoreDefaultArgs: ["--enable-automation"],
   });
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   return { ctx, page };
 }
 
+/** true se a sessão gov.br está ativa. Espera até 45 s pela tela de consulta; loga o motivo quando falha. */
 async function logado(page) {
-  await page.goto(CONSULTA, { waitUntil: "domcontentloaded" });
-  await dormir(4000);
-  const url = page.url();
-  if (/sso|gov\.br|login|auth/i.test(url) && !url.startsWith(CONSULTA)) return false;
-  return (await page.locator("text=Pesquisar por").count()) > 0;
+  await page.goto(CONSULTA, { waitUntil: "domcontentloaded" }).catch(() => null);
+  for (let i = 0; i < 45; i++) {
+    await dormir(1000);
+    const url = page.url();
+    if (/sso\.acesso\.gov\.br|acesso\.gov\.br\/login|\/auth\/realms/i.test(url)) {
+      log("portal redirecionou para o login gov.br:", url.slice(0, 90));
+      return false;
+    }
+    if ((await page.locator("text=Pesquisar por").count()) > 0) return true;
+    if (i === 20) log("ainda carregando…", url.slice(0, 90));
+  }
+  log("tela de consulta não apareceu. URL final:", page.url().slice(0, 120), "| título:", await page.title().catch(() => "?"));
+  return false;
 }
 
 /** Faz uma busca pela interface para o portal emitir uma chamada com o token; devolve o token. */
