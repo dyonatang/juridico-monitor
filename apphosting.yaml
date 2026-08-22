@@ -1,0 +1,48 @@
+# Firebase App Hosting — https://firebase.google.com/docs/app-hosting/configure
+# Segredos: crie com `firebase apphosting:secrets:set NOME` e referencie abaixo.
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 40
+  cpu: 1
+  memoryMiB: 1024
+
+env:
+  - variable: APP_URL
+    value: https://SEU-BACKEND.web.app          # troque pela URL final
+    availability: [BUILD, RUNTIME]
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: juridico-assis-arquivos
+    availability: [RUNTIME]
+  - variable: APP_GRUPO
+    value: Grupo Giovanelli · Assis
+    availability: [RUNTIME]
+
+  - variable: DASHBOARD_USER
+    secret: DASHBOARD_USER
+  - variable: DASHBOARD_PASSWORD
+    secret: DASHBOARD_PASSWORD
+  - variable: MCP_TOKEN
+    secret: MCP_TOKEN
+  - variable: CRON_SECRET
+    secret: CRON_SECRET
+  - variable: WEBHOOK_SECRET
+    secret: WEBHOOK_SECRET
+  - variable: SESSION_SECRET
+    secret: SESSION_SECRET
+
+  # Leitura de PDF por IA (recomendado)
+  - variable: ANTHROPIC_API_KEY
+    secret: ANTHROPIC_API_KEY
+
+  # Provedor premium (opcional)
+  # - variable: MONITOR_PROVIDER
+  #   value: judit
+  # - variable: JUDIT_API_KEY
+  #   secret: JUDIT_API_KEY
+
+  # Notificações (opcional)
+  # - variable: RESEND_API_KEY
+  #   secret: RESEND_API_KEY
+  # - variable: NOTIFY_EMAIL_TO
+  #   value: dyonatan@caranguejodoassis.com.br

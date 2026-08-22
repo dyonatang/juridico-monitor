@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "30mb", // upload de PDFs pelo formulário
+    },
+  },
+  serverExternalPackages: ["firebase-admin", "pdf-parse"],
 };
 
 export default nextConfig;

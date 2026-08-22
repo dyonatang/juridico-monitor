@@ -1,0 +1,192 @@
+<title>Guia de Instalação Jurídico Monitor</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{--bg:#F2F4F7;--surface:#fff;--surface-2:#F7F8FA;--line:#DDE2EA;--ink:#1B2A41;--ink-2:#4A5A72;--ink-3:#7C8AA0;--accent:#8B2332;--accent-soft:#F6E7EA;--ok:#2E7D4F;--ok-soft:#E3F2E8;--warn:#B7791F;--warn-soft:#FBF1DC;--code:#EEF1F5}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F1620;--surface:#171F2B;--surface-2:#1E2835;--line:#2A3542;--ink:#E6EBF2;--ink-2:#AAB6C7;--ink-3:#7C8AA0;--accent:#D66A7B;--accent-soft:#3A1F26;--ok:#5FBF86;--ok-soft:#183324;--warn:#D9A441;--warn-soft:#3A2D12;--code:#0B111A}}
+  :root[data-theme="dark"]{--bg:#0F1620;--surface:#171F2B;--surface-2:#1E2835;--line:#2A3542;--ink:#E6EBF2;--ink-2:#AAB6C7;--ink-3:#7C8AA0;--accent:#D66A7B;--accent-soft:#3A1F26;--ok:#5FBF86;--ok-soft:#183324;--warn:#D9A441;--warn-soft:#3A2D12;--code:#0B111A}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans",system-ui,sans-serif}
+  .wrap{max-width:780px;margin:0 auto;padding:40px 24px 80px}
+  h1,h2,h3{font-family:"Newsreader",Georgia,serif;font-weight:600;text-wrap:balance;margin:0}
+  h1{font-size:36px;line-height:1.1}
+  .lead{color:var(--ink-2);margin:10px 0 0;max-width:60ch}
+  .toc{margin:28px 0 0;padding:16px 20px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+  .toc ol{margin:8px 0 0;padding-left:22px;columns:2;gap:24px}
+  .toc li{break-inside:avoid;padding:2px 0}
+  .toc a{color:inherit;text-decoration:none}.toc a:hover{text-decoration:underline}
+  section{margin-top:40px}
+  .stage{display:flex;align-items:baseline;gap:12px;border-bottom:2px solid var(--line);padding-bottom:8px}
+  .stage h2{font-size:24px}
+  .stage .where{margin-left:auto;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+  .stage .time{font-size:12px;color:var(--ink-3)}
+  ol.steps{margin:16px 0 0;padding:0;list-style:none;counter-reset:s}
+  ol.steps>li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  ol.steps>li::before{content:counter(s);width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:600;font-size:13px;display:grid;place-items:center;margin-top:2px}
+  ol.steps p{margin:0}
+  ol.steps p+p{margin-top:6px}
+  code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;background:var(--code);padding:1px 6px;border-radius:4px}
+  pre{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:12px 14px;overflow-x:auto;margin:8px 0 0;line-height:1.5}
+  pre code{background:none;padding:0}
+  .note{margin-top:8px;padding:10px 14px;border-radius:6px;font-size:13.5px;background:var(--warn-soft);color:var(--warn)}
+  .note.ok{background:var(--ok-soft);color:var(--ok)}
+  .note.accent{background:var(--accent-soft);color:var(--accent)}
+  .check{font-size:13px;color:var(--ok);margin-top:6px}
+  .check::before{content:"✓ ";font-weight:600}
+  kbd{font:inherit;font-weight:500}
+  .path{color:var(--ink-2)}
+  .path b{color:var(--ink)}
+  ul.plain{margin:6px 0 0;padding-left:18px}
+  ul.plain li{margin:2px 0}
+</style>
+<div class="wrap">
+  <h1>Guia de instalação</h1>
+  <p class="lead">Do zero ao sistema no ar, com o Claude conectado. São 8 etapas; faça na ordem. O que é clicável no site está em <b>negrito</b>; o que é para digitar está em <code>código</code>.</p>
+
+  <div class="toc">
+    <b>Etapas</b>
+    <ol>
+      <li><a href="#e1">Criar o projeto no Firebase</a></li>
+      <li><a href="#e2">Criar o banco (Firestore)</a></li>
+      <li><a href="#e3">Baixar a chave de acesso</a></li>
+      <li><a href="#e4">Rodar no seu computador</a></li>
+      <li><a href="#e5">Subir o código para o GitHub</a></li>
+      <li><a href="#e6">Publicar (App Hosting)</a></li>
+      <li><a href="#e7">Agendar a verificação automática</a></li>
+      <li><a href="#e8">Conectar o Claude (MCP)</a></li>
+    </ol>
+  </div>
+
+  <section id="e0">
+    <div class="stage"><h2>Antes de começar</h2><span class="time">2 min</span></div>
+    <ul class="plain">
+      <li>Uma conta Google (Gmail) — será a dona do projeto.</li>
+      <li>Uma conta no <b>github.com</b> (gratuita). Se não tiver, crie antes da etapa 5.</li>
+      <li>Um cartão de crédito para o plano <b>Blaze</b> do Firebase (etapa 1). É pague-pelo-uso; para este volume a conta fica perto de zero — o Firestore e o App Hosting têm cota gratuita mensal.</li>
+      <li>O projeto está em <span class="path"><b>02 - Diretoria › Claude › Juridico IA › juridico-monitor</b></span>. Já existe um <code>.env.local</code> nessa pasta com os tokens de segurança gerados.</li>
+    </ul>
+  </section>
+
+  <section id="e1">
+    <div class="stage"><h2>1. Criar o projeto no Firebase</h2><span class="where">navegador</span></div>
+    <ol class="steps">
+      <li><p>Abra <b>console.firebase.google.com</b> e entre com a conta Google.</p></li>
+      <li><p>Clique em <b>Criar um projeto</b> (ou <b>Adicionar projeto</b>). Nome: <code>juridico-monitor</code>. Avance.</p></li>
+      <li><p>Na pergunta sobre o Google Analytics, <b>desative</b> (não é necessário). Clique em <b>Criar projeto</b> e espere terminar. Clique em <b>Continuar</b>.</p></li>
+      <li><p>No canto inferior esquerdo aparece <b>Spark · Fazer upgrade</b>. Clique, escolha <b>Blaze (pague conforme o uso)</b>, associe ou crie uma conta de faturamento com o cartão e confirme. Pode definir um alerta de orçamento (ex.: R$ 20) — recomendo.</p><p class="note">Sem o Blaze o App Hosting (etapa 6) não funciona. Este é o único passo com cartão.</p></li>
+    </ol>
+    <p class="check">Você está dentro do projeto e o rodapé mostra "Blaze".</p>
+  </section>
+
+  <section id="e2">
+    <div class="stage"><h2>2. Criar o banco (Firestore)</h2><span class="where">navegador</span></div>
+    <ol class="steps">
+      <li><p>No menu esquerdo: <b>Criação</b> (Build) › <b>Firestore Database</b> › <b>Criar banco de dados</b>.</p></li>
+      <li><p>Edição: <b>Standard</b>. ID do banco: deixe <code>(default)</code>.</p></li>
+      <li><p>Local: <code>southamerica-east1 (São Paulo)</code>. <b>Isso não pode ser mudado depois.</b> Avance.</p></li>
+      <li><p>Regras de segurança: <b>Modo de produção</b>. Clique em <b>Criar</b>.</p></li>
+      <li><p>Ainda em <b>Criação</b>: <b>Storage</b> › <b>Começar</b> › modo <b>produção</b> › mesma região › <b>Concluído</b>. É onde os PDFs importados ficam guardados.</p></li>
+    </ol>
+    <p class="check">Abre a tela do banco, vazia. As coleções aparecem sozinhas no primeiro cadastro.</p>
+  </section>
+
+  <section id="e3">
+    <div class="stage"><h2>3. Baixar a chave de acesso</h2><span class="where">navegador + pasta</span></div>
+    <ol class="steps">
+      <li><p>Clique na <b>engrenagem</b> ao lado de "Visão geral do projeto" › <b>Configurações do projeto</b>.</p></li>
+      <li><p>Aba <b>Contas de serviço</b>. Com "Firebase Admin SDK" selecionado, clique em <b>Gerar nova chave privada</b> › <b>Gerar chave</b>. Baixa um arquivo <code>.json</code>.</p></li>
+      <li><p>Renomeie o arquivo para <code>firebase-key.json</code> e mova para a pasta do projeto (<span class="path"><b>juridico-monitor</b></span>, a mesma onde está o <code>package.json</code>).</p><p class="note accent">Esse arquivo dá acesso total ao banco. Ele já está no <code>.gitignore</code> — não vai para o GitHub. Não envie por WhatsApp/e-mail.</p></li>
+    </ol>
+  </section>
+
+  <section id="e4">
+    <div class="stage"><h2>4. Rodar no seu computador</h2><span class="where">terminal</span><span class="time">5 min</span></div>
+    <ol class="steps">
+      <li><p>Abra a pasta do projeto no Explorador de Arquivos. Na barra de endereço digite <code>cmd</code> e <kbd>Enter</kbd> — abre o terminal já dentro da pasta.</p></li>
+      <li><p>Abra o arquivo <code>.env.local</code> no Bloco de Notas. Troque a linha <code>DASHBOARD_PASSWORD=troque-esta-senha</code> pela senha que você vai usar para entrar no painel. Salve. (Os outros tokens já estão gerados.)</p></li>
+      <li><p><b>Leitura de PDF por IA</b> (recomendado): em <b>console.anthropic.com</b> › <b>API keys</b> › <b>Create key</b>. Copie a chave (começa com <code>sk-ant-</code>) e, no <code>.env.local</code>, troque a linha <code># ANTHROPIC_API_KEY=sk-ant-...</code> por <code>ANTHROPIC_API_KEY=</code> + a chave (sem o <code>#</code>). Coloque uns US$ 10 de crédito na conta — cada PDF custa centavos.</p><p class="note">Sem essa chave a tela "Importar PDF" ainda funciona, mas só extrai o número do processo do texto; não lê PDF escaneado nem faz resumo.</p></li>
+      <li><p>No terminal:</p><pre><code>npm install
+npm run dev</code></pre></li>
+      <li><p>Abra <b>http://localhost:3000</b>. Aparece a tela de login: usuário <code>dyonatan</code> e a senha que você definiu.</p></li>
+      <li><p>Teste: <b>Empresas</b> › cadastre uma. Depois <b>Processos</b> › cole o número de um processo real (formato <code>0000000-00.0000.0.00.0000</code>) › <b>Cadastrar e consultar</b>. Em alguns segundos ele importa as movimentações do DataJud.</p></li>
+      <li><p>Teste o leitor: <b>Importar PDF</b> › arraste uma citação ou petição › <b>Enviar e ler</b>. Ele mostra o resumo, o(s) processo(s) encontrado(s) e já cadastra os que não existiam.</p><p class="note">Se der "Não foi possível conectar ao Firebase", confira o nome/local do <code>firebase-key.json</code>. Se der "Processo não encontrado na fonte", o tribunal ainda não publicou esse processo no DataJud — tente outro número.</p></li>
+      <li><p>Para parar: <kbd>Ctrl + C</kbd> no terminal.</p></li>
+    </ol>
+    <p class="check">Painel abre, empresa e processo cadastrados, movimentações visíveis no detalhe do processo.</p>
+  </section>
+
+  <section id="e5">
+    <div class="stage"><h2>5. Subir o código para o GitHub</h2><span class="where">navegador + terminal</span></div>
+    <ol class="steps">
+      <li><p>Em <b>github.com</b> › <b>+</b> › <b>New repository</b>. Nome <code>juridico-monitor</code>, <b>Private</b>. Não marque nenhuma opção de README. <b>Create repository</b>.</p></li>
+      <li><p>Copie a URL que aparece (termina em <code>.git</code>).</p></li>
+      <li><p>No terminal, dentro da pasta do projeto (troque a URL pela sua):</p><pre><code>git init -b main
+git add .
+git commit -m "Juridico Monitor"
+git remote add origin https://github.com/SEU-USUARIO/juridico-monitor.git
+git push -u origin main</code></pre><p>Na primeira vez o Git pede para entrar no GitHub — autorize na janela que abre.</p></li>
+    </ol>
+    <p class="check">Atualize a página do repositório: os arquivos aparecem. <code>.env.local</code> e <code>firebase-key.json</code> <b>não</b> aparecem (correto).</p>
+  </section>
+
+  <section id="e6">
+    <div class="stage"><h2>6. Publicar (Firebase App Hosting)</h2><span class="where">navegador + terminal</span><span class="time">15 min</span></div>
+    <ol class="steps">
+      <li><p>Instale a ferramenta de linha de comando e entre na conta:</p><pre><code>npm install -g firebase-tools
+firebase login
+firebase use juridico-monitor</code></pre><p>Se o ID do projeto tiver sufixo (ex.: <code>juridico-monitor-a1b2c</code>), use o ID completo — está em Configurações do projeto.</p></li>
+      <li><p>Crie os segredos (um comando por vez; ele pede o valor — cole o mesmo que está no <code>.env.local</code>). Quando perguntar se deve conceder acesso ao backend, responda <b>Y</b>.</p><pre><code>firebase apphosting:secrets:set DASHBOARD_USER
+firebase apphosting:secrets:set DASHBOARD_PASSWORD
+firebase apphosting:secrets:set MCP_TOKEN
+firebase apphosting:secrets:set CRON_SECRET
+firebase apphosting:secrets:set WEBHOOK_SECRET
+firebase apphosting:secrets:set SESSION_SECRET
+firebase apphosting:secrets:set ANTHROPIC_API_KEY</code></pre></li>
+      <li><p>No console: <b>Criação</b> › <b>App Hosting</b> › <b>Começar</b>.</p></li>
+      <li><p>Região: <code>southamerica-east1</code> se estiver na lista; senão <code>us-central1</code>. Avance.</p></li>
+      <li><p><b>Conectar ao GitHub</b> › autorize o app do Firebase na sua conta › escolha o repositório <code>juridico-monitor</code>. Diretório raiz: <code>/</code>. Branch ativa: <code>main</code>. Marque "implantação automática". Avance.</p></li>
+      <li><p>ID do backend: <code>juridico</code>. <b>Concluir e implantar</b>. A primeira publicação leva uns 5–8 minutos.</p></li>
+      <li><p>Quando terminar, copie o <b>domínio</b> mostrado (algo como <code>juridico--juridico-monitor.southamerica-east1.hosted.app</code>).</p></li>
+      <li><p>Abra <code>apphosting.yaml</code> no Bloco de Notas, troque <code>https://SEU-BACKEND.web.app</code> pelo domínio copiado (com <code>https://</code>). Salve e publique a mudança:</p><pre><code>git add apphosting.yaml
+git commit -m "URL do app"
+git push</code></pre></li>
+      <li><p>Publique as regras que bloqueiam acesso direto ao banco:</p><pre><code>firebase deploy --only firestore:rules</code></pre></li>
+    </ol>
+    <p class="check">Abra o domínio no celular: pede usuário/senha e mostra o painel com a empresa e o processo que você cadastrou na etapa 4.</p>
+    <p class="note">Em <b>App Hosting</b> › seu backend › <b>Configurações › Domínios</b> dá para ligar um domínio próprio, ex.: <code>juridico.caranguejodoassis.com.br</code>.</p>
+  </section>
+
+  <section id="e7">
+    <div class="stage"><h2>7. Agendar a verificação automática</h2><span class="where">navegador</span></div>
+    <ol class="steps">
+      <li><p>Abra <b>console.cloud.google.com</b> (mesma conta). No topo, selecione o projeto <code>juridico-monitor</code>.</p></li>
+      <li><p>Na busca do topo digite <b>Cloud Scheduler</b> e abra. Se pedir para <b>ativar a API</b>, ative.</p></li>
+      <li><p><b>Criar job</b>. Nome: <code>sincronizar-processos</code>. Região: <code>southamerica-east1</code>. Frequência: <code>0 6,12,18 * * *</code>. Fuso horário: <b>Brasília (America/Sao_Paulo)</b>. Avance.</p></li>
+      <li><p>Tipo de destino: <b>HTTP</b>. URL: <code>https://SEU-DOMINIO/api/cron/sync?secret=COLE_O_CRON_SECRET</code> (o valor está no <code>.env.local</code>). Método: <b>GET</b>. Avance › <b>Criar</b>.</p></li>
+      <li><p>Na lista, clique em <b>Forçar execução</b> para testar. Volte ao painel do sistema: "Última sincronização" deve mostrar a hora de agora.</p></li>
+    </ol>
+    <p class="check">Três verificações por dia (6h, 12h, 18h). Os 3 primeiros jobs do Scheduler são gratuitos.</p>
+  </section>
+
+  <section id="e8">
+    <div class="stage"><h2>8. Conectar o Claude (MCP)</h2><span class="where">Claude</span></div>
+    <ol class="steps">
+      <li><p>Monte a URL do conector: <code>https://SEU-DOMINIO/api/mcp?token=COLE_O_MCP_TOKEN</code>.</p></li>
+      <li><p><b>No Claude (app ou claude.ai):</b> <b>Configurações</b> › <b>Conectores</b> › <b>Adicionar conector personalizado</b>. Nome: <code>Jurídico</code>. URL: a de cima. Salvar. (Não precisa de OAuth.)</p></li>
+      <li><p><b>No Claude Code (terminal):</b></p><pre><code>claude mcp add --transport http juridico "https://SEU-DOMINIO/api/mcp" --header "Authorization: Bearer COLE_O_MCP_TOKEN"</code></pre></li>
+      <li><p>Teste numa conversa: <i>"Use o conector Jurídico e me dê o resumo geral."</i> O Claude deve responder com as contagens do painel.</p></li>
+      <li><p>Para ser avisado todo dia: crie uma <b>tarefa agendada</b> no Claude (ex.: 08:00) com o texto:</p><pre><code>Chame alertas_pendentes no conector Jurídico. Se houver alertas, me envie um resumo claro (processo, data, o que aconteceu) e depois chame marcar_alertas_lidos. Se não houver, responda só "Sem novidades".</code></pre></li>
+    </ol>
+    <p class="check">A partir daqui você pode cadastrar tudo por conversa: "cadastre o CNPJ 00.000.000/0001-00 da empresa X", "adicione o processo 0000000-00…".</p>
+    <p class="note accent">Guarde o <code>MCP_TOKEN</code> como uma senha: quem tiver a URL com o token lê e cadastra processos.</p>
+  </section>
+
+  <section>
+    <div class="stage"><h2>Opcional, depois</h2></div>
+    <ul class="plain">
+      <li><b>Descobrir processos pelo CNPJ/CPF automaticamente:</b> contratar a API da Judit (judit.io/planos-api). Com a chave em mãos: <code>firebase apphosting:secrets:set JUDIT_API_KEY</code>, descomente as linhas da Judit no <code>apphosting.yaml</code>, <code>git push</code>. Depois, em <b>CPFs / CNPJs</b>, clique em <b>Ativar</b> em cada documento.</li>
+      <li><b>Domínio do bucket diferente:</b> se o Storage mostrar um nome que não termina em <code>.firebasestorage.app</code>, adicione <code>FIREBASE_STORAGE_BUCKET=&lt;nome&gt;</code> no <code>apphosting.yaml</code>/<code>.env.local</code>.</li>
+      <li><b>E-mail a cada alerta:</b> conta em resend.com › chave › <code>firebase apphosting:secrets:set RESEND_API_KEY</code> e descomente <code>NOTIFY_EMAIL_TO</code> no <code>apphosting.yaml</code>.</li>
+      <li><b>WhatsApp:</b> um fluxo no n8n/Make ou uma instância Z-API/Evolution recebendo o <code>NOTIFY_WEBHOOK_URL</code>.</li>
+    </ul>
+  </section>
+</div>
