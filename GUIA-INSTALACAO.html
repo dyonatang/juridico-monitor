@@ -62,7 +62,7 @@
       <li>Uma conta Google (Gmail) — será a dona do projeto.</li>
       <li>Uma conta no <b>github.com</b> (gratuita). Se não tiver, crie antes da etapa 5.</li>
       <li>Um cartão de crédito para o plano <b>Blaze</b> do Firebase (etapa 1). É pague-pelo-uso; para este volume a conta fica perto de zero — o Firestore e o App Hosting têm cota gratuita mensal.</li>
-      <li>O projeto está em <span class="path"><b>02 - Diretoria › Claude › Juridico IA › juridico-monitor</b></span>. Já existe um <code>.env.local</code> nessa pasta com os tokens de segurança gerados.</li>
+      <li>Dentro da pasta do projeto existe um arquivo <code>.env.example</code> — na etapa 4 você vai copiá-lo para <code>.env.local</code> e preencher com os dados do <b>seu</b> Firebase (ele não vem pronto; cada instalação tem os seus próprios tokens).</li>
     </ul>
   </section>
 
@@ -102,12 +102,13 @@
     <div class="stage"><h2>4. Rodar no seu computador</h2><span class="where">terminal</span><span class="time">5 min</span></div>
     <ol class="steps">
       <li><p>Abra a pasta do projeto no Explorador de Arquivos. Na barra de endereço digite <code>cmd</code> e <kbd>Enter</kbd> — abre o terminal já dentro da pasta.</p></li>
-      <li><p>Abra o arquivo <code>.env.local</code> no Bloco de Notas. Troque a linha <code>DASHBOARD_PASSWORD=troque-esta-senha</code> pela senha que você vai usar para entrar no painel. Salve. (Os outros tokens já estão gerados.)</p></li>
+      <li><p>No terminal, instale as dependências e crie o seu <code>.env.local</code> a partir do exemplo:</p><pre><code>npm install
+copy .env.example .env.local</code></pre></li>
+      <li><p>Gere 5 tokens aleatórios, um de cada vez (rode o comando 5 vezes e copie cada resultado):</p><pre><code>node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"</code></pre><p>Abra o <code>.env.local</code> no Bloco de Notas e cole um token em cada uma destas linhas, sem repetir: <code>SESSION_SECRET</code>, <code>MCP_TOKEN</code>, <code>CRON_SECRET</code>, <code>WEBHOOK_SECRET</code>, <code>INGEST_TOKEN</code>. Troque também <code>DASHBOARD_USER</code> (seu usuário de login) e <code>DASHBOARD_PASSWORD</code> (sua senha). Salve.</p></li>
       <li><p><b>Leitura de PDF por IA</b> (recomendado): em <b>console.anthropic.com</b> › <b>API keys</b> › <b>Create key</b>. Copie a chave (começa com <code>sk-ant-</code>) e, no <code>.env.local</code>, troque a linha <code># ANTHROPIC_API_KEY=sk-ant-...</code> por <code>ANTHROPIC_API_KEY=</code> + a chave (sem o <code>#</code>). Coloque uns US$ 10 de crédito na conta — cada PDF custa centavos.</p><p class="note">Sem essa chave a tela "Importar PDF" ainda funciona, mas só extrai o número do processo do texto; não lê PDF escaneado nem faz resumo.</p></li>
-      <li><p>No terminal:</p><pre><code>npm install
-npm run dev</code></pre></li>
-      <li><p>Abra <b>http://localhost:3000</b>. Aparece a tela de login: usuário <code>dyonatan</code> e a senha que você definiu.</p></li>
-      <li><p>Teste: <b>Empresas</b> › cadastre uma. Depois <b>Processos</b> › cole o número de um processo real (formato <code>0000000-00.0000.0.00.0000</code>) › <b>Cadastrar e consultar</b>. Em alguns segundos ele importa as movimentações do DataJud.</p></li>
+      <li><p>Ainda no terminal:</p><pre><code>npm run dev</code></pre></li>
+      <li><p>Abra <b>http://localhost:3000</b>. Aparece a tela de login: use o <code>DASHBOARD_USER</code> e o <code>DASHBOARD_PASSWORD</code> que você definiu no <code>.env.local</code>.</p></li>
+      <li><p>Teste: <b>CPFs / CNPJs</b> › cadastre um. Depois <b>Processos</b> › cole o número de um processo real (formato <code>0000000-00.0000.0.00.0000</code>) › <b>Cadastrar e consultar</b>. Em alguns segundos ele importa as movimentações do DataJud.</p></li>
       <li><p>Teste o leitor: <b>Importar PDF</b> › arraste uma citação ou petição › <b>Enviar e ler</b>. Ele mostra o resumo, o(s) processo(s) encontrado(s) e já cadastra os que não existiam.</p><p class="note">Se der "Não foi possível conectar ao Firebase", confira o nome/local do <code>firebase-key.json</code>. Se der "Processo não encontrado na fonte", o tribunal ainda não publicou esse processo no DataJud — tente outro número.</p></li>
       <li><p>Para parar: <kbd>Ctrl + C</kbd> no terminal.</p></li>
     </ol>
@@ -133,7 +134,7 @@ git push -u origin main</code></pre><p>Na primeira vez o Git pede para entrar no
     <ol class="steps">
       <li><p>Instale a ferramenta de linha de comando e entre na conta:</p><pre><code>npm install -g firebase-tools
 firebase login
-firebase use juridico-monitor</code></pre><p>Se o ID do projeto tiver sufixo (ex.: <code>juridico-monitor-a1b2c</code>), use o ID completo — está em Configurações do projeto.</p></li>
+firebase use SEU-ID-DE-PROJETO</code></pre><p>Troque <code>SEU-ID-DE-PROJETO</code> pelo ID do projeto que você criou na etapa 1 — está em Configurações do projeto (pode ter um sufixo, ex.: <code>juridico-monitor-a1b2c</code>; use o ID completo).</p></li>
       <li><p>Crie os segredos (um comando por vez; ele pede o valor — cole o mesmo que está no <code>.env.local</code>). Quando perguntar se deve conceder acesso ao backend, responda <b>Y</b>.</p><pre><code>firebase apphosting:secrets:set DASHBOARD_USER
 firebase apphosting:secrets:set DASHBOARD_PASSWORD
 firebase apphosting:secrets:set MCP_TOKEN
