@@ -80,7 +80,7 @@ Servidor MCP em `https://SEU-APP/api/mcp`, protegido por Bearer token (`MCP_TOKE
 claude mcp add --transport http juridico https://SEU-APP/api/mcp --header "Authorization: Bearer SEU_MCP_TOKEN"
 ```
 
-Ferramentas: `resumo_geral`, `alertas_pendentes`, `andamentos_recentes`, `listar_processos`, `detalhes_processo`, `documentos_importados`, `listar_empresas`, `listar_documentos_monitorados`, `cadastrar_empresa`, `cadastrar_documento`, `cadastrar_processo`, `sincronizar_agora`, `marcar_alertas_lidos`.
+Ferramentas: `resumo_geral`, `alertas_pendentes`, `andamentos_recentes`, `listar_processos`, `detalhes_processo`, `documentos_importados`, `listar_documentos_monitorados`, `cadastrar_documento`, `cadastrar_processo`, `sincronizar_agora`, `marcar_alertas_lidos`.
 
 Para o Claude **te avisar** proativamente, crie uma tarefa agendada no Claude (ex.: todo dia às 8h):
 > "Chame `alertas_pendentes` no conector jurídico. Se houver alertas, me envie um resumo e depois marque como lidos."
@@ -100,8 +100,14 @@ Depois, em **CPFs / CNPJs** clique em *Ativar* nos documentos já cadastrados pa
 
 > ⚠️ O adaptador do Escavador segue a documentação pública v2; confirme os campos de `/monitoramentos` e do callback com o plano contratado. O da Judit segue a doc oficial de `tracking` e `lawsuits`.
 
-## Agente jus.br (varredura e peças, sem provedor pago)
-Na pasta [`agente-jusbr/`](agente-jusbr/README.md) há um robô que roda no servidor do grupo com o login gov.br do usuário: varre os CPFs/CNPJs no **jus.br**, descobre processos novos, atualiza movimentações (com partes) e baixa as **peças** (texto) para o sistema via `POST /api/ingestao` (token `INGEST_TOKEN`). Instalação, agendamento e re-login no README dele.
+### 9. Claude Code (recomendado) — sincronização manual com o jus.br e assistente pelo chat
+O DataJud (fonte gratuita) tem atraso em relação ao jus.br oficial — às vezes dias, às vezes meses. Em vez de manter um robô automático rodando sozinho (decisão deliberada: login em conta gov.br pessoal não deve ficar em mãos de um agente sem supervisão), este projeto usa o [Claude Code](https://claude.com/claude-code) como "braço" manual:
+1. Instale o Claude Code e abra esta pasta do projeto nele.
+2. O arquivo [`.claude/skills/sincronizar-jusbr/SKILL.md`](.claude/skills/sincronizar-jusbr/SKILL.md) já vem no repositório — ele ensina o Claude a comparar os processos com o jus.br e importar o que estiver faltando.
+3. No dashboard, o botão **"Sincronizar com jus.br"** (painel principal) abre o portal numa aba nova para você logar com sua própria conta gov.br.
+4. Depois de logar, volte ao chat do Claude Code e peça: `/sincronizar-jusbr` (ou "sincronize os processos com o jus.br"). O Claude faz a comparação e a importação ao vivo, usando seu navegador — nunca guarda nem usa sua senha.
+
+> A pasta `agente-jusbr/` (se existir no seu clone) é uma abordagem antiga de robô automático, **abandonada** — não a use; ela não reflete a forma atual (manual) de sincronizar.
 
 ## Estrutura
 
