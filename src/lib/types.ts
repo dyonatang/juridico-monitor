@@ -29,6 +29,8 @@ export type Processo = {
   valor_causa: number | null;
   situacao: string | null;
   resumo_status: string | null; // resumo em linguagem simples de como está o processo, tipo advogado explicando pro cliente
+  classificacao_risco: "provavel" | "possivel" | "remoto" | null; // avaliação de risco (CPC 25), definida manualmente
+  valor_provisionado: number | null; // valor provisionado contabilmente pra esse processo
   descricao: string | null;
   documento_id: string | null;
   origem: "manual" | "descoberto";

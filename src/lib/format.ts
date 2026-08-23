@@ -14,6 +14,19 @@ export function formatarDocumento(tipo: "CPF" | "CNPJ", d: string) {
   return tipo === "CPF" ? formatarCpf(d) : formatarCnpj(d);
 }
 
+/** CPF/CNPJ com o miolo oculto (ex.: "123.***.***-01"), pra não deixar o número inteiro exposto na tela por padrão. */
+export function mascararCpf(d: string) {
+  d = somenteDigitos(d);
+  return `${d.slice(0, 3)}.***.***-${d.slice(9, 11)}`;
+}
+export function mascararCnpj(d: string) {
+  d = somenteDigitos(d);
+  return `${d.slice(0, 2)}.***.***/****-${d.slice(12, 14)}`;
+}
+export function mascararDocumento(tipo: "CPF" | "CNPJ", d: string) {
+  return tipo === "CPF" ? mascararCpf(d) : mascararCnpj(d);
+}
+
 export function validarCpf(cpf: string): boolean {
   cpf = somenteDigitos(cpf);
   if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;

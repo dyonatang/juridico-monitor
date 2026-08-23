@@ -1,15 +1,20 @@
 import { notFound } from "next/navigation";
 import * as store from "@/lib/store";
 import { fmtData, fmtDataHora } from "@/lib/format";
-import { BackLink, Card, Pill, SubmitButton } from "@/components/ui";
-import { alternarAtivoAction, excluirAction, sincronizarProcessoAction } from "@/app/actions";
+import { BackLink, Card, Input, Pill, Select, SubmitButton } from "@/components/ui";
+import { alternarAtivoAction, atualizarRiscoAction, excluirAction, sincronizarProcessoAction } from "@/app/actions";
+import { registrarAuditoria } from "@/lib/auditoria";
 
 export const dynamic = "force-dynamic";
+
+const RISCO_LABEL: Record<string, string> = { provavel: "Provável", possivel: "Possível", remoto: "Remoto" };
+const RISCO_TONE: Record<string, "bad" | "warn" | "ok"> = { provavel: "bad", possivel: "warn", remoto: "ok" };
 
 export default async function ProcessoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const p = await store.getProcesso(id);
   if (!p) notFound();
+  await registrarAuditoria("visualizou_processo", { tipo: "processo", id: p.id, rotulo: p.numero_formatado });
   const [movs, docs, arquivos] = await Promise.all([store.listarMovimentacoes(p.id), store.listarDocumentos(), store.listarArquivosDoProcesso(p.id)]);
   const doc = docs.find((d) => d.id === p.documento_id);
 
@@ -57,6 +62,25 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
             <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
           ))}
         </dl>
+      </Card>
+
+      <Card
+        title="Risco e provisão"
+        actions={p.classificacao_risco ? <Pill tone={RISCO_TONE[p.classificacao_risco]}>{RISCO_LABEL[p.classificacao_risco]}</Pill> : <Pill>não avaliado</Pill>}
+      >
+        <dl className="capa">
+          <div><dt>Valor provisionado</dt><dd>{p.valor_provisionado != null ? p.valor_provisionado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</dd></div>
+        </dl>
+        <form action={atualizarRiscoAction.bind(null, id)} className="form">
+          <Select label="Classificação (CPC 25)" name="classificacao_risco" defaultValue={p.classificacao_risco ?? ""}>
+            <option value="">— não avaliado —</option>
+            <option value="provavel">Provável</option>
+            <option value="possivel">Possível</option>
+            <option value="remoto">Remoto</option>
+          </Select>
+          <Input label="Valor provisionado (R$)" name="valor_provisionado" type="number" step="0.01" defaultValue={p.valor_provisionado ?? ""} />
+          <div className="actions"><SubmitButton tone="secondary">Salvar avaliação</SubmitButton></div>
+        </form>
       </Card>
 
       {arquivos.length > 0 && (

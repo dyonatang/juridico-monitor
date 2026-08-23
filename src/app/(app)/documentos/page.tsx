@@ -1,9 +1,10 @@
 import Link from "next/link";
 import * as store from "@/lib/store";
-import { formatarDocumento, fmtDataHora } from "@/lib/format";
+import { formatarDocumento, mascararDocumento, fmtDataHora } from "@/lib/format";
 import { provedorPremium } from "@/lib/providers";
 import { ActionForm, Card, Input, Select, Pill, SubmitButton } from "@/components/ui";
 import { RowLink } from "@/components/row-link";
+import { DocumentoToggle } from "@/components/documento-toggle";
 import { alternarAtivoAction, criarDocumentoAction, excluirAction, reativarMonitoramentoAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +77,7 @@ export default async function Documentos() {
                     {d.apelido && <div className="sub">{d.nome}</div>}
                   </td>
                   <td>
-                    <Pill>{d.tipo}</Pill> <span className="mono">{formatarDocumento(d.tipo, d.numero)}</span>
+                    <Pill>{d.tipo}</Pill> <DocumentoToggle mascarado={mascararDocumento(d.tipo, d.numero)} completo={formatarDocumento(d.tipo, d.numero)} />
                   </td>
                   <td>{d.vinculo_id ? nomeDoc.get(d.vinculo_id) ?? "—" : "—"}</td>
                   <td className="right">{nProc(d.id)}</td>

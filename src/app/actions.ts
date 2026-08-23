@@ -7,6 +7,7 @@ import { cadastrarDocumento, cadastrarProcesso, marcarAlertasLidos, ativarMonito
 import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
 import { importarPdf } from "@/lib/importar";
 import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario } from "@/lib/usuarios";
+import { registrarAuditoria } from "@/lib/auditoria";
 import type { Papel } from "@/lib/types";
 import { apagarArquivo } from "@/lib/storage";
 import type { ResultadoProcessoImportado } from "@/lib/types";
@@ -19,7 +20,7 @@ const tudo = () => ["/", "/documentos", "/processos", "/alertas", "/importar"].f
 
 export async function criarDocumentoAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
-    await exigirAdmin();
+    const eu = await exigirAdmin();
     const doc = await cadastrarDocumento({
       tipo: str(fd, "tipo") as "CPF" | "CNPJ",
       numero: str(fd, "numero"),
@@ -28,6 +29,7 @@ export async function criarDocumentoAction(_: ActionState, fd: FormData): Promis
       vinculo_id: str(fd, "vinculo_id") || null,
       observacao: str(fd, "observacao"),
     });
+    await registrarAuditoria("criou_documento", { tipo: "documento", id: doc.id, rotulo: doc.apelido || doc.nome }, eu.login);
     tudo();
     return { ok: doc.ultimo_erro ? `Cadastrado. Aviso: ${doc.ultimo_erro}` : "Documento cadastrado e monitoramento ativado." };
   } catch (e) {
@@ -37,12 +39,13 @@ export async function criarDocumentoAction(_: ActionState, fd: FormData): Promis
 
 export async function criarProcessoAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
-    await exigirAdmin();
+    const eu = await exigirAdmin();
     const r = await cadastrarProcesso({
       numero: str(fd, "numero"),
       descricao: str(fd, "descricao"),
       documento_id: str(fd, "documento_id") || null,
     });
+    await registrarAuditoria("criou_processo", { tipo: "processo", id: r.processo.id, rotulo: r.processo.numero_formatado }, eu.login);
     tudo();
     return r.erro
       ? { ok: `Processo cadastrado, mas a primeira consulta falhou: ${r.erro}` }
@@ -59,10 +62,24 @@ export async function alternarAtivoAction(col: store.Colecao, id: string, ativo:
 }
 
 export async function excluirAction(col: store.Colecao, id: string) {
-  await exigirAdmin();
+  const eu = await exigirAdmin();
+  await registrarAuditoria(col === "processos" ? "excluiu_processo" : "excluiu_documento", { tipo: col === "processos" ? "processo" : "documento", id }, eu.login);
   await store.excluir(col, id);
   tudo();
   if (col === "processos") redirect("/processos");
+}
+
+export async function atualizarRiscoAction(id: string, fd: FormData) {
+  const eu = await exigirAdmin();
+  const classificacao = str(fd, "classificacao_risco");
+  const valorStr = str(fd, "valor_provisionado");
+  await store.atualizar("processos", id, {
+    classificacao_risco: classificacao === "provavel" || classificacao === "possivel" || classificacao === "remoto" ? classificacao : null,
+    valor_provisionado: valorStr ? Number(valorStr) : null,
+  });
+  await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "avaliação de risco" }, eu.login);
+  revalidatePath(`/processos/${id}`);
+  tudo();
 }
 
 export async function sincronizarProcessoAction(id: string) {
@@ -98,8 +115,9 @@ export type ImportState =
   | undefined;
 
 export async function importarPdfAction(_: ImportState, fd: FormData): Promise<ImportState> {
+  let eu;
   try {
-    await exigirAdmin();
+    eu = await exigirAdmin();
   } catch (e) {
     return { erro: msg(e) };
   }
@@ -114,6 +132,7 @@ export async function importarPdfAction(_: ImportState, fd: FormData): Promise<I
     }
     try {
       const a = await importarPdf({ nome: f.name, bytes: Buffer.from(await f.arrayBuffer()), documento_id });
+      await registrarAuditoria("importou_pdf", { tipo: "arquivo", id: a.id, rotulo: f.name }, eu.login);
       resultados.push({ nome: f.name, processos: a.resultado, resumo: a.analise?.resumo ?? null, erro: null });
     } catch (e) {
       resultados.push({ nome: f.name, processos: [], resumo: null, erro: msg(e) });
@@ -124,11 +143,12 @@ export async function importarPdfAction(_: ImportState, fd: FormData): Promise<I
 }
 
 export async function excluirArquivoAction(id: string) {
-  await exigirAdmin();
+  const eu = await exigirAdmin();
   const a = await store.getArquivo(id);
   if (a) {
     await apagarArquivo(a.storage_path).catch(() => null);
     await store.excluirArquivo(id);
+    await registrarAuditoria("excluiu_arquivo", { tipo: "arquivo", id, rotulo: a.nome }, eu.login);
   }
   tudo();
 }
@@ -136,9 +156,10 @@ export async function excluirArquivoAction(id: string) {
 // ------------------------------------------------------------------ Usuários
 export async function criarUsuarioAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
-    await exigirAdmin();
+    const eu = await exigirAdmin();
     const papel = (str(fd, "papel") === "admin" ? "admin" : "leitura") as Papel;
     const u = await criarUsuario({ nome: str(fd, "nome"), login: str(fd, "login"), senha: str(fd, "senha"), papel });
+    await registrarAuditoria("criou_usuario", { tipo: "usuario", id: u.login, rotulo: u.nome }, eu.login);
     revalidatePath("/usuarios");
     return { ok: `Usuário ${u.nome} (${u.login}) cadastrado.` };
   } catch (e) {
@@ -154,6 +175,7 @@ export async function alternarUsuarioAction(login: string, ativo: boolean) {
     if (alvo?.papel === "admin" && (await contarAdmins()) <= 1) throw new Error("Não é possível bloquear o único administrador.");
   }
   await atualizarUsuario(login, { ativo });
+  await registrarAuditoria("alterou_usuario", { tipo: "usuario", id: login, rotulo: ativo ? "reativado" : "bloqueado" }, eu.login);
   revalidatePath("/usuarios");
 }
 
@@ -163,11 +185,13 @@ export async function excluirUsuarioAction(login: string) {
   const alvo = await getUsuario(login);
   if (alvo?.papel === "admin" && alvo.ativo && (await contarAdmins()) <= 1) throw new Error("Não é possível excluir o único administrador.");
   await excluirUsuario(login);
+  await registrarAuditoria("excluiu_usuario", { tipo: "usuario", id: login, rotulo: alvo?.nome ?? login }, eu.login);
   revalidatePath("/usuarios");
 }
 
 export async function redefinirSenhaAction(login: string, fd: FormData) {
-  await exigirAdmin();
+  const eu = await exigirAdmin();
   await atualizarUsuario(login, { senha: str(fd, "senha") });
+  await registrarAuditoria("redefiniu_senha", { tipo: "usuario", id: login }, eu.login);
   revalidatePath("/usuarios");
 }

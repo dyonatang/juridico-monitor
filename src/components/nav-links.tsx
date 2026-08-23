@@ -14,7 +14,7 @@ const links: [string, string][] = [
 export function NavLinks({ pendentes, admin }: { pendentes: number; admin?: boolean }) {
   const path = usePathname();
   const ativo = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
-  const todos = admin ? [...links, ["/usuarios", "Usuários"] as [string, string]] : links;
+  const todos = admin ? [...links, ["/usuarios", "Usuários"] as [string, string], ["/auditoria", "Auditoria"] as [string, string]] : links;
   return (
     <nav className="nav" aria-label="Seções">
       {todos.map(([href, label]) => (

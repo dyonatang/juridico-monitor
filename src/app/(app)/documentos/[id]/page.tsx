@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import * as store from "@/lib/store";
-import { formatarDocumento, fmtDataHora } from "@/lib/format";
+import { formatarDocumento, mascararDocumento, fmtDataHora } from "@/lib/format";
 import { BackLink, Card, Pill } from "@/components/ui";
 import { ProcessosTable } from "@/components/processos-table";
+import { DocumentoToggle } from "@/components/documento-toggle";
+import { registrarAuditoria } from "@/lib/auditoria";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +13,7 @@ export default async function DocumentoDetalhe({ params }: { params: Promise<{ i
   const { id } = await params;
   const d = await store.getDocumento(id);
   if (!d) notFound();
+  await registrarAuditoria("visualizou_documento", { tipo: "documento", id: d.id, rotulo: d.apelido || d.nome });
   const [processos, todos] = await Promise.all([store.listarProcessos({ documento_id: id }), store.listarDocumentos()]);
   const vinculo = d.vinculo_id ? todos.find((x) => x.id === d.vinculo_id) : null;
   const vinculados = todos.filter((x) => x.vinculo_id === id);
@@ -23,7 +26,7 @@ export default async function DocumentoDetalhe({ params }: { params: Promise<{ i
           <h1>{d.apelido || d.nome}</h1>
           <p>
             {d.apelido && <>{d.nome} · </>}
-            <Pill>{d.tipo}</Pill> <span className="mono">{formatarDocumento(d.tipo, d.numero)}</span>
+            <Pill>{d.tipo}</Pill> <DocumentoToggle mascarado={mascararDocumento(d.tipo, d.numero)} completo={formatarDocumento(d.tipo, d.numero)} />
             {vinculo && (
               <>
                 {" "}
@@ -66,7 +69,7 @@ export default async function DocumentoDetalhe({ params }: { params: Promise<{ i
                 <Link href={`/documentos/${v.id}`} className="link">
                   {v.apelido || v.nome}
                 </Link>{" "}
-                <Pill>{v.tipo}</Pill> <span className="mono sub">{formatarDocumento(v.tipo, v.numero)}</span>
+                <Pill>{v.tipo}</Pill> <DocumentoToggle mascarado={mascararDocumento(v.tipo, v.numero)} completo={formatarDocumento(v.tipo, v.numero)} />
               </li>
             ))}
           </ul>

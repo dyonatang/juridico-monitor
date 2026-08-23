@@ -120,10 +120,22 @@ export async function getProcessoPorTracking(trackingId: string) {
   const r = await fs().collection("processos").where("provider_tracking_id", "==", trackingId).limit(1).get();
   return r.empty ? null : toObj<Processo>(r.docs[0]);
 }
-export async function criarProcesso(data: Omit<Processo, "id" | "created_at" | "ativo" | "ultimo_check" | "ultimo_erro" | "total_movimentacoes" | "ultima_movimentacao_em" | "resumo_status">): Promise<Processo> {
+export async function criarProcesso(data: Omit<Processo, "id" | "created_at" | "ativo" | "ultimo_check" | "ultimo_erro" | "total_movimentacoes" | "ultima_movimentacao_em" | "resumo_status" | "classificacao_risco" | "valor_provisionado">): Promise<Processo> {
   const ref = fs().collection("processos").doc(data.numero_cnj);
   if ((await ref.get()).exists) throw new Error("Este processo já está cadastrado");
-  const p: Processo = { id: ref.id, ...data, ativo: true, ultimo_check: null, ultimo_erro: null, total_movimentacoes: 0, ultima_movimentacao_em: null, resumo_status: null, created_at: agora() };
+  const p: Processo = {
+    id: ref.id,
+    ...data,
+    ativo: true,
+    ultimo_check: null,
+    ultimo_erro: null,
+    total_movimentacoes: 0,
+    ultima_movimentacao_em: null,
+    resumo_status: null,
+    classificacao_risco: null,
+    valor_provisionado: null,
+    created_at: agora(),
+  };
   await ref.set(limpar({ ...p, id: undefined }));
   return p;
 }
