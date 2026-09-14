@@ -1,6 +1,6 @@
 import Link from "next/link";
 import * as store from "@/lib/store";
-import { fmtDataHora } from "@/lib/format";
+import { fmtData, fmtDataHora } from "@/lib/format";
 import { Card, Stat, Pill, SubmitButton } from "@/components/ui";
 import { ItemLink, RowLink } from "@/components/row-link";
 import { marcarLidoAction, sincronizarTudoAction } from "@/app/actions";
@@ -17,6 +17,7 @@ export default async function Painel() {
       store.listarDocumentos(true),
       store.listarAlertas({ apenasNaoLidos: true }),
       store.movimentacoesRecentes(new Date(Date.now() - 7 * 86400000).toISOString(), 10),
+      store.listarProximosPrazos(8),
     ]);
   } catch (e) {
     return (
@@ -25,7 +26,7 @@ export default async function Painel() {
       </div>
     );
   }
-  const [processos, docs, alertas, movs] = dados;
+  const [processos, docs, alertas, movs, prazos] = dados;
   const docsPorId = new Map(docs.map((d) => [d.id, d]));
   const porId = new Map(processos.map((p) => [p.id, p]));
   const comErro = processos.filter((p) => p.ultimo_erro);
@@ -166,6 +167,27 @@ export default async function Painel() {
           </div>
         </Card>
       </div>
+
+      {prazos.length > 0 && (
+        <Card title="Próximos prazos e audiências">
+          <div className="card-b">
+            <ul className="feed">
+              {prazos.map(({ prazo, processo }) => (
+                <ItemLink key={prazo.id} href={`/processos/${processo.id}`}>
+                  <span className="stripe" style={{ background: "var(--accent)" }} />
+                  <div>
+                    <b>{fmtData(prazo.data)}</b>{" "}
+                    <Link href={`/processos/${processo.id}`} className="t link mono">{processo.numero_formatado}</Link>
+                    {processo.descricao && <span className="sub"> · {processo.descricao}</span>}
+                    <div className="m">{prazo.descricao}</div>
+                  </div>
+                  <span />
+                </ItemLink>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
 
       <Card title="Processos por vínculo" actions={<Link href="/processos" className="btn sm">Ver todos</Link>}>
         <div className="tablewrap">

@@ -8,7 +8,7 @@ import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
 import { importarPdf } from "@/lib/importar";
 import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario } from "@/lib/usuarios";
 import { registrarAuditoria } from "@/lib/auditoria";
-import type { Papel, PontoControvertido } from "@/lib/types";
+import type { Papel, PontoControvertido, Prazo } from "@/lib/types";
 import { apagarArquivo } from "@/lib/storage";
 import type { ResultadoProcessoImportado } from "@/lib/types";
 
@@ -113,6 +113,32 @@ export async function excluirPontoControvertidoAction(id: string, pontoId: strin
   await store.atualizar("processos", id, { pontos_controvertidos: pontos });
   await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "excluiu ponto controvertido" }, eu.login);
   revalidatePath(`/processos/${id}`);
+}
+
+export async function adicionarPrazoAction(id: string, fd: FormData) {
+  const eu = await exigirAdmin();
+  const data = str(fd, "data").trim();
+  const descricao = str(fd, "descricao").trim();
+  if (!data || !descricao) return;
+  const p = await store.getProcesso(id);
+  if (!p) return;
+  const prazo: Prazo = { id: store.novoId("processos"), data, descricao, created_at: store.agora() };
+  const prazos = [...(p.proximos_prazos ?? []), prazo];
+  await store.atualizar("processos", id, { proximos_prazos: prazos });
+  await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "adicionou prazo" }, eu.login);
+  revalidatePath(`/processos/${id}`);
+  tudo();
+}
+
+export async function excluirPrazoAction(id: string, prazoId: string) {
+  const eu = await exigirAdmin();
+  const p = await store.getProcesso(id);
+  if (!p?.proximos_prazos) return;
+  const prazos = p.proximos_prazos.filter((pr) => pr.id !== prazoId);
+  await store.atualizar("processos", id, { proximos_prazos: prazos });
+  await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "excluiu prazo" }, eu.login);
+  revalidatePath(`/processos/${id}`);
+  tudo();
 }
 
 export async function sincronizarProcessoAction(id: string) {

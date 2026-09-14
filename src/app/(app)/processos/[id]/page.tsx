@@ -4,11 +4,13 @@ import { fmtData, fmtDataHora } from "@/lib/format";
 import { BackLink, Card, Input, Pill, Select, SubmitButton } from "@/components/ui";
 import {
   adicionarPontoControvertidoAction,
+  adicionarPrazoAction,
   alternarAtivoAction,
   atualizarRiscoAction,
   atualizarStatusPontoAction,
   excluirAction,
   excluirPontoControvertidoAction,
+  excluirPrazoAction,
   sincronizarProcessoAction,
 } from "@/app/actions";
 import { registrarAuditoria } from "@/lib/auditoria";
@@ -67,6 +69,32 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
           <b>Como está:</b> {p.resumo_status}
         </div>
       )}
+
+      <Card title="Próximos prazos" hint={p.proximos_prazos?.length ? String(p.proximos_prazos.length) : undefined}>
+        <div className="card-b">
+          {(!p.proximos_prazos || p.proximos_prazos.length === 0) && <p className="empty">Nenhum prazo ou audiência registrado.</p>}
+          {p.proximos_prazos && p.proximos_prazos.length > 0 && (
+            <ul className="plain-list">
+              {[...p.proximos_prazos]
+                .sort((a, b) => a.data.localeCompare(b.data))
+                .map((pr) => (
+                  <li key={pr.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                    <span className="mono sub" style={{ flexShrink: 0 }}>{fmtData(pr.data)}</span>
+                    <span style={{ flex: 1 }}>{pr.descricao}</span>
+                    <form action={excluirPrazoAction.bind(null, id, pr.id)}>
+                      <SubmitButton tone="sm-danger">Excluir</SubmitButton>
+                    </form>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+        <form action={adicionarPrazoAction.bind(null, id)} className="form">
+          <Input label="Data" name="data" type="date" />
+          <Input label="Descrição" name="descricao" wide placeholder="ex.: Audiência una — comparecer com preposto" />
+          <div className="actions"><SubmitButton tone="secondary">Adicionar</SubmitButton></div>
+        </form>
+      </Card>
 
       <Card title="Capa" actions={<Pill tone={p.ativo ? "ok" : "neutral"}>{p.ativo ? "ativo" : "pausado"}{p.grau ? ` · ${p.grau}` : ""}</Pill>}>
         <dl className="capa">
