@@ -14,6 +14,13 @@ export type DocumentoMonitorado = {
   created_at: string;
 };
 
+export type PontoControvertido = {
+  id: string;
+  texto: string; // o que precisa ser provado/decidido (ex.: "se a requerida emitiu os cheques")
+  status: "pendente" | "favoravel" | "desfavoravel"; // favoravel/desfavoravel = já resolvido, a favor/contra o nosso lado
+  created_at: string;
+};
+
 export type Processo = {
   id: string; // = numero_cnj (20 dígitos)
   numero_cnj: string;
@@ -31,6 +38,7 @@ export type Processo = {
   resumo_status: string | null; // resumo em linguagem simples de como está o processo, tipo advogado explicando pro cliente
   classificacao_risco: "provavel" | "possivel" | "remoto" | null; // avaliação de risco (CPC 25), definida manualmente
   valor_provisionado: number | null; // valor provisionado contabilmente pra esse processo
+  pontos_controvertidos: PontoControvertido[] | null; // o que ainda falta provar/decidir nesse processo
   descricao: string | null;
   documento_id: string | null;
   origem: "manual" | "descoberto";

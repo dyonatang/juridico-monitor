@@ -8,7 +8,7 @@ import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
 import { importarPdf } from "@/lib/importar";
 import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario } from "@/lib/usuarios";
 import { registrarAuditoria } from "@/lib/auditoria";
-import type { Papel } from "@/lib/types";
+import type { Papel, PontoControvertido } from "@/lib/types";
 import { apagarArquivo } from "@/lib/storage";
 import type { ResultadoProcessoImportado } from "@/lib/types";
 
@@ -80,6 +80,39 @@ export async function atualizarRiscoAction(id: string, fd: FormData) {
   await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "avaliação de risco" }, eu.login);
   revalidatePath(`/processos/${id}`);
   tudo();
+}
+
+export async function adicionarPontoControvertidoAction(id: string, fd: FormData) {
+  const eu = await exigirAdmin();
+  const texto = str(fd, "texto").trim();
+  if (!texto) return;
+  const p = await store.getProcesso(id);
+  if (!p) return;
+  const ponto: PontoControvertido = { id: store.novoId("processos"), texto, status: "pendente", created_at: store.agora() };
+  const pontos = [...(p.pontos_controvertidos ?? []), ponto];
+  await store.atualizar("processos", id, { pontos_controvertidos: pontos });
+  await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "adicionou ponto controvertido" }, eu.login);
+  revalidatePath(`/processos/${id}`);
+}
+
+export async function atualizarStatusPontoAction(id: string, pontoId: string, status: PontoControvertido["status"]) {
+  const eu = await exigirAdmin();
+  const p = await store.getProcesso(id);
+  if (!p?.pontos_controvertidos) return;
+  const pontos = p.pontos_controvertidos.map((pt) => (pt.id === pontoId ? { ...pt, status } : pt));
+  await store.atualizar("processos", id, { pontos_controvertidos: pontos });
+  await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "atualizou ponto controvertido" }, eu.login);
+  revalidatePath(`/processos/${id}`);
+}
+
+export async function excluirPontoControvertidoAction(id: string, pontoId: string) {
+  const eu = await exigirAdmin();
+  const p = await store.getProcesso(id);
+  if (!p?.pontos_controvertidos) return;
+  const pontos = p.pontos_controvertidos.filter((pt) => pt.id !== pontoId);
+  await store.atualizar("processos", id, { pontos_controvertidos: pontos });
+  await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "excluiu ponto controvertido" }, eu.login);
+  revalidatePath(`/processos/${id}`);
 }
 
 export async function sincronizarProcessoAction(id: string) {

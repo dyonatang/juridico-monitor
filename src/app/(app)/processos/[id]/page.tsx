@@ -2,13 +2,25 @@ import { notFound } from "next/navigation";
 import * as store from "@/lib/store";
 import { fmtData, fmtDataHora } from "@/lib/format";
 import { BackLink, Card, Input, Pill, Select, SubmitButton } from "@/components/ui";
-import { alternarAtivoAction, atualizarRiscoAction, excluirAction, sincronizarProcessoAction } from "@/app/actions";
+import {
+  adicionarPontoControvertidoAction,
+  alternarAtivoAction,
+  atualizarRiscoAction,
+  atualizarStatusPontoAction,
+  excluirAction,
+  excluirPontoControvertidoAction,
+  sincronizarProcessoAction,
+} from "@/app/actions";
 import { registrarAuditoria } from "@/lib/auditoria";
+import type { PontoControvertido } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const RISCO_LABEL: Record<string, string> = { provavel: "Provável", possivel: "Possível", remoto: "Remoto" };
 const RISCO_TONE: Record<string, "bad" | "warn" | "ok"> = { provavel: "bad", possivel: "warn", remoto: "ok" };
+const STATUS_LABEL: Record<PontoControvertido["status"], string> = { pendente: "Pendente", favoravel: "Favorável", desfavoravel: "Desfavorável" };
+const STATUS_TONE: Record<PontoControvertido["status"], "neutral" | "ok" | "bad"> = { pendente: "neutral", favoravel: "ok", desfavoravel: "bad" };
+const STATUS_ORDEM: PontoControvertido["status"][] = ["pendente", "favoravel", "desfavoravel"];
 
 export default async function ProcessoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -80,6 +92,38 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
           </Select>
           <Input label="Valor provisionado (R$)" name="valor_provisionado" type="number" step="0.01" defaultValue={p.valor_provisionado ?? ""} />
           <div className="actions"><SubmitButton tone="secondary">Salvar avaliação</SubmitButton></div>
+        </form>
+      </Card>
+
+      <Card title="Pontos controvertidos" hint={p.pontos_controvertidos?.length ? String(p.pontos_controvertidos.length) : undefined}>
+        <div className="card-b">
+          {(!p.pontos_controvertidos || p.pontos_controvertidos.length === 0) && (
+            <p className="empty">Nada registrado ainda — o que falta provar ou decidir nesse processo.</p>
+          )}
+          {p.pontos_controvertidos && p.pontos_controvertidos.length > 0 && (
+            <ul className="plain-list">
+              {p.pontos_controvertidos.map((pt) => (
+                <li key={pt.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+                  <Pill tone={STATUS_TONE[pt.status]}>{STATUS_LABEL[pt.status]}</Pill>
+                  <span style={{ flex: 1 }}>{pt.texto}</span>
+                  <div className="actions-row">
+                    {STATUS_ORDEM.filter((s) => s !== pt.status).map((s) => (
+                      <form key={s} action={atualizarStatusPontoAction.bind(null, id, pt.id, s)}>
+                        <SubmitButton tone="sm">{STATUS_LABEL[s]}</SubmitButton>
+                      </form>
+                    ))}
+                    <form action={excluirPontoControvertidoAction.bind(null, id, pt.id)}>
+                      <SubmitButton tone="sm-danger">Excluir</SubmitButton>
+                    </form>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <form action={adicionarPontoControvertidoAction.bind(null, id)} className="form">
+          <Input label="Novo ponto controvertido" name="texto" wide placeholder="ex.: se a requerida emitiu os cheques" />
+          <div className="actions"><SubmitButton tone="secondary">Adicionar</SubmitButton></div>
         </form>
       </Card>
 
