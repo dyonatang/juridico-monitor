@@ -3,11 +3,89 @@ import * as store from "@/lib/store";
 import { fmtData, fmtDataHora } from "@/lib/format";
 import { Card, Stat, Pill, SubmitButton } from "@/components/ui";
 import { ItemLink, RowLink } from "@/components/row-link";
+import { SyncButton } from "@/components/sync-button";
 import { marcarLidoAction, sincronizarTudoAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
 const hoje = () => new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" });
+
+const haQuanto = (iso: string) => {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "agora mesmo";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  return h < 48 ? `há ${h}h` : `há ${Math.round(h / 24)} dias`;
+};
+
+// Uma rodada nunca passa de ~4 min (orçamento do cron); aberta há mais que isso = foi interrompida.
+const LIMITE_RODADA_MS = 6 * 60_000;
+// Sem nenhuma rodada nesse intervalo, o agendamento automático provavelmente está parado.
+const LIMITE_SEM_RODADA_H = 26;
+
+function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
+  if (!log) {
+    return (
+      <div className="sync-status warn">
+        <span className="icone">⚠️</span>
+        <div>
+          <div className="titulo">Nenhuma atualização registrada ainda</div>
+          <div className="linha">Clique em &quot;Sincronizar agora&quot; para fazer a primeira consulta aos tribunais.</div>
+        </div>
+      </div>
+    );
+  }
+  const det = (log.detalhes ?? {}) as { erros?: string[]; pendentes?: number };
+  const erros = det.erros ?? [];
+  const pendentes = det.pendentes ?? 0;
+  const aberta = !log.finalizado_em;
+  const emAndamento = aberta && Date.now() - new Date(log.iniciado_em).getTime() < LIMITE_RODADA_MS;
+  const interrompida = aberta && !emAndamento;
+  const quando = log.finalizado_em ?? log.iniciado_em;
+  const semRodadaH = (Date.now() - new Date(log.iniciado_em).getTime()) / 3_600_000;
+
+  let tom = "";
+  let icone = "✅";
+  let titulo = "Última atualização concluída sem erros";
+  if (emAndamento) { tom = "warn"; icone = "🔄"; titulo = "Atualização em andamento"; }
+  else if (interrompida) { tom = "bad"; icone = "⛔"; titulo = "A última atualização foi interrompida antes de terminar"; }
+  else if (erros.length) { tom = "bad"; icone = "⚠️"; titulo = `Última atualização terminou com ${erros.length} erro(s)`; }
+  else if (pendentes) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
+
+  return (
+    <div className={`sync-status ${tom}`}>
+      <span className="icone">{icone}</span>
+      <div style={{ flex: 1 }}>
+        <div className="titulo">{titulo}</div>
+        <div className="linha">
+          {emAndamento ? "Começou" : interrompida ? "Iniciada" : "Terminou"} {haQuanto(quando)} — {fmtDataHora(quando)}
+        </div>
+        {!emAndamento && !interrompida && (
+          <div className="linha">
+            {log.processos_verificados} processo(s) verificado(s) · {log.novas_movimentacoes} andamento(s) novo(s) · {erros.length} erro(s)
+            {pendentes > 0 && ` · ${pendentes} ficaram pra próxima rodada (a fonte estava lenta)`}
+          </div>
+        )}
+        {interrompida && (
+          <div className="linha">Nada foi perdido — a próxima rodada continua pelos processos que ficaram sem checar.</div>
+        )}
+        {semRodadaH > LIMITE_SEM_RODADA_H && (
+          <div className="alerta">
+            Nenhuma atualização nas últimas {Math.round(semRodadaH)} horas — o agendamento automático pode estar parado.
+          </div>
+        )}
+        {erros.length > 0 && (
+          <details>
+            <summary>Ver quais processos deram erro</summary>
+            <ul>
+              {erros.map((e, i) => <li key={i}>{e.length > 180 ? `${e.slice(0, 180)}…` : e}</li>)}
+            </ul>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default async function Painel() {
   let dados;
@@ -18,6 +96,7 @@ export default async function Painel() {
       store.listarAlertas({ apenasNaoLidos: true }),
       store.movimentacoesRecentes(new Date(Date.now() - 7 * 86400000).toISOString(), 10),
       store.listarProximosPrazos(8),
+      store.ultimoSyncLog(),
     ]);
   } catch (e) {
     return (
@@ -26,7 +105,7 @@ export default async function Painel() {
       </div>
     );
   }
-  const [processos, docs, alertas, movs, prazos] = dados;
+  const [processos, docs, alertas, movs, prazos, ultimoLog] = dados;
   const docsPorId = new Map(docs.map((d) => [d.id, d]));
   const porId = new Map(processos.map((p) => [p.id, p]));
   const comErro = processos.filter((p) => p.ultimo_erro);
@@ -65,7 +144,7 @@ export default async function Painel() {
           <h1>Painel</h1>
           <p style={{ textTransform: "capitalize" }}>{hoje()}</p>
         </div>
-        <div className="actions-row">
+        <div className="actions-row" style={{ alignItems: "flex-start" }}>
           <a
             href="https://portaldeservicos.pdpj.jus.br/consulta"
             target="_blank"
@@ -75,14 +154,14 @@ export default async function Painel() {
           >
             Sincronizar com jus.br
           </a>
-          <form action={sincronizarTudoAction}>
-            <SubmitButton tone="secondary">Sincronizar agora</SubmitButton>
-          </form>
+          <SyncButton action={sincronizarTudoAction} />
         </div>
       </div>
       <p className="hint" style={{ marginTop: -14, marginBottom: 18 }}>
         &quot;Sincronizar com jus.br&quot; abre o portal numa aba nova — depois de logar, peça ao Claude: <code>/sincronizar-jusbr</code>.
       </p>
+
+      <StatusAtualizacao log={ultimoLog} />
 
       <div className="stats">
         <Stat href="/processos" label="Processos ativos" value={processos.length} sub={`${processos.filter((p) => p.origem === "descoberto").length} descobertos automaticamente`} />

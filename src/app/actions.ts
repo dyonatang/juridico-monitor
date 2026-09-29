@@ -149,11 +149,21 @@ export async function sincronizarProcessoAction(id: string) {
   tudo();
 }
 
-export async function sincronizarTudoAction() {
-  // Botão do painel: requisição interativa, então um orçamento curto — o que faltar fica
-  // pra próxima rodada (a fila começa pelos processos checados há mais tempo).
-  await sincronizarTudo({ orcamentoMs: 50_000 });
-  tudo();
+export async function sincronizarTudoAction(_: ActionState): Promise<ActionState> {
+  try {
+    // Botão do painel: requisição interativa, então um orçamento curto — o que faltar fica
+    // pra próxima rodada (a fila começa pelos processos checados há mais tempo).
+    const r = await sincronizarTudo({ orcamentoMs: 50_000 });
+    tudo();
+    const partes = [`${r.verificados} processo(s) verificado(s)`, `${r.novas} andamento(s) novo(s)`];
+    if (r.erros.length) partes.push(`${r.erros.length} com erro`);
+    const pend = r.pendentes ? ` ${r.pendentes} ficaram pra próxima rodada (fonte lenta).` : "";
+    return r.erros.length
+      ? { erro: `Terminou com problemas: ${partes.join(", ")}.${pend}` }
+      : { ok: `Pronto: ${partes.join(", ")}.${pend}` };
+  } catch (e) {
+    return { erro: `A atualização falhou: ${msg(e)}` };
+  }
 }
 
 export async function reativarMonitoramentoAction(id: string) {
