@@ -63,7 +63,8 @@ export async function alternarAtivoAction(col: store.Colecao, id: string, ativo:
 
 export async function excluirAction(col: store.Colecao, id: string) {
   const eu = await exigirAdmin();
-  await registrarAuditoria(col === "processos" ? "excluiu_processo" : "excluiu_documento", { tipo: col === "processos" ? "processo" : "documento", id }, eu.login);
+  const rotulo = col === "processos" ? (await store.getProcesso(id))?.numero_formatado : await store.getDocumento(id).then((d) => (d ? d.apelido || d.nome : null));
+  await registrarAuditoria(col === "processos" ? "excluiu_processo" : "excluiu_documento", { tipo: col === "processos" ? "processo" : "documento", id, rotulo }, eu.login);
   await store.excluir(col, id);
   tudo();
   if (col === "processos") redirect("/processos");
@@ -149,7 +150,9 @@ export async function sincronizarProcessoAction(id: string) {
 }
 
 export async function sincronizarTudoAction() {
-  await sincronizarTudo();
+  // Botão do painel: requisição interativa, então um orçamento curto — o que faltar fica
+  // pra próxima rodada (a fila começa pelos processos checados há mais tempo).
+  await sincronizarTudo({ orcamentoMs: 50_000 });
   tudo();
 }
 

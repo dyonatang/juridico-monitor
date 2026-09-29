@@ -143,7 +143,12 @@ export async function sincronizarProcesso(processo: Processo): Promise<number> {
     }
     if (!remoto && provider.nome !== "datajud") remoto = await datajud.consultarProcesso(processo.numero_cnj, processo.tribunal);
     if (!remoto) {
-      await store.atualizar("processos", processo.id, { ultimo_check: store.agora(), ultimo_erro: "Processo não encontrado na fonte" });
+      // Se já veio dado dessa fonte antes, um "0 resultados" agora é quase sempre instabilidade
+      // do DataJud, não o processo sumindo — não trata como "não encontrado".
+      const msg = processo.total_movimentacoes > 0
+        ? "A fonte não retornou o processo nesta consulta (já tinha andamentos antes — provável instabilidade; será tentado de novo)"
+        : "Processo não encontrado na fonte";
+      await store.atualizar("processos", processo.id, { ultimo_check: store.agora(), ultimo_erro: msg });
       return 0;
     }
     return await aplicarRemoto(processo, remoto, provider.nome);
@@ -154,23 +159,46 @@ export async function sincronizarProcesso(processo: Processo): Promise<number> {
   }
 }
 
-/** Sincroniza todos os ativos, grava log e dispara notificações. */
-export async function sincronizarTudo(): Promise<{ verificados: number; novas: number; erros: string[] }> {
+const PAUSA_ENTRE_CONSULTAS_MS = 1200;
+
+/**
+ * Sincroniza os ativos (os checados há mais tempo primeiro), grava log e dispara notificações.
+ * O DataJud às vezes leva 30s+ por consulta: com `orcamentoMs`, para de iniciar novas consultas
+ * quando o tempo acaba e fecha o log como parcial — a próxima rodada continua de onde parou,
+ * porque a fila é ordenada pelo último check. Sem isso a requisição estourava o tempo limite
+ * da hospedagem no meio e o log ficava aberto para sempre.
+ */
+export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Promise<{ verificados: number; novas: number; erros: string[]; pendentes: number }> {
+  const inicio = Date.now();
+  const orcamento = opts.orcamentoMs ?? 240_000;
   const logId = await store.iniciarSyncLog();
   const processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
 
   let verificados = 0;
   let novas = 0;
+  let tentados = 0;
   const erros: string[] = [];
-  for (const p of processos) {
-    try {
-      novas += await sincronizarProcesso(p);
-      verificados++;
-    } catch (e) {
-      erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
+  try {
+    for (const p of processos) {
+      if (Date.now() - inicio > orcamento) break;
+      if (tentados > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_CONSULTAS_MS));
+      tentados++;
+      try {
+        novas += await sincronizarProcesso(p);
+        verificados++;
+      } catch (e) {
+        erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
+  } finally {
+    const pendentes = processos.length - tentados;
+    const notificados = await notificarPendentes().catch(() => 0);
+    await store.finalizarSyncLog(logId, {
+      processos_verificados: verificados,
+      novas_movimentacoes: novas,
+      erros: erros.length,
+      detalhes: { erros, notificados, pendentes, parcial: pendentes > 0 },
+    });
   }
-  const notificados = await notificarPendentes();
-  await store.finalizarSyncLog(logId, { processos_verificados: verificados, novas_movimentacoes: novas, erros: erros.length, detalhes: { erros, notificados } });
-  return { verificados, novas, erros };
+  return { verificados, novas, erros, pendentes: processos.length - tentados };
 }

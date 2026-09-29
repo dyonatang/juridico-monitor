@@ -156,8 +156,9 @@ const handler = createMcpHandler(
           if (!p) return texto("Processo não cadastrado.");
           return texto(`Sincronizado ${p.numero_formatado}: ${await sincronizarProcesso(p)} movimentação(ões) nova(s).`);
         }
-        const r = await sincronizarTudo();
-        return texto(`Sincronização completa: ${r.verificados} verificado(s), ${r.novas} nova(s), ${r.erros.length} erro(s).${r.erros.length ? "\n" + r.erros.join("\n") : ""}`);
+        const r = await sincronizarTudo({ orcamentoMs: 120_000 });
+        const pend = r.pendentes ? ` ${r.pendentes} ficaram pra próxima rodada (fonte lenta).` : "";
+        return texto(`Sincronização ${r.pendentes ? "parcial" : "completa"}: ${r.verificados} verificado(s), ${r.novas} nova(s), ${r.erros.length} erro(s).${pend}${r.erros.length ? "\n" + r.erros.join("\n") : ""}`);
       },
     );
 
