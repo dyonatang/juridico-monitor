@@ -63,6 +63,7 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
       </div>
 
       {p.ultimo_erro && <div className="notice bad"><b>Erro na última consulta:</b> {p.ultimo_erro}</div>}
+      {!p.ultimo_erro && p.aviso_fonte && <div className="notice"><b>Sobre a atualização automática:</b> {p.aviso_fonte}</div>}
 
       {p.resumo_status && (
         <div className="notice" style={{ borderColor: "var(--accent)" }}>

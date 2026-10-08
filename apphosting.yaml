@@ -9,7 +9,7 @@ runConfig:
 
 env:
   - variable: APP_URL
-    value: https://SEU-BACKEND.web.app # troque pela URL final
+    value: https://juridico--juridico-assis.us-central1.hosted.app
     availability: [ BUILD, RUNTIME ]
   - variable: FIREBASE_STORAGE_BUCKET
     value: juridico-assis-arquivos

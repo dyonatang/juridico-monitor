@@ -151,13 +151,13 @@ export async function sincronizarProcessoAction(id: string) {
 
 export async function sincronizarTudoAction(_: ActionState): Promise<ActionState> {
   try {
-    // Botão do painel: requisição interativa, então um orçamento curto — o que faltar fica
-    // pra próxima rodada (a fila começa pelos processos checados há mais tempo).
-    const r = await sincronizarTudo({ orcamentoMs: 50_000 });
+    // Botão do painel: requisição interativa. A consulta em lote ao DataJud costuma levar
+    // 30-40s; o orçamento dá folga pra uma nova tentativa se a fonte engasgar.
+    const r = await sincronizarTudo({ orcamentoMs: 85_000 });
     tudo();
     const partes = [`${r.verificados} processo(s) verificado(s)`, `${r.novas} andamento(s) novo(s)`];
     if (r.erros.length) partes.push(`${r.erros.length} com erro`);
-    const pend = r.pendentes ? ` ${r.pendentes} ficaram pra próxima rodada (fonte lenta).` : "";
+    const pend = r.pendentes ? ` ${r.pendentes} não puderam ser verificados agora (fonte do CNJ sobrecarregada) — tente de novo em alguns minutos.` : "";
     return r.erros.length
       ? { erro: `Terminou com problemas: ${partes.join(", ")}.${pend}` }
       : { ok: `Pronto: ${partes.join(", ")}.${pend}` };

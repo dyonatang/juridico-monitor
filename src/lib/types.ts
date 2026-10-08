@@ -57,6 +57,7 @@ export type Processo = {
   ultima_movimentacao_em: string | null;
   ultimo_check: string | null;
   ultimo_erro: string | null;
+  aviso_fonte?: string | null; // observação sobre a fonte que NÃO é erro (ex.: processo sigiloso, fora do DataJud)
   created_at: string;
 };
 

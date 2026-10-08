@@ -7,7 +7,7 @@ import { SubmitButton } from "./ui";
 
 function Situacao({ state }: { state: ActionState }) {
   const { pending } = useFormStatus();
-  if (pending) return <span className="hint">Consultando os tribunais — pode levar até 1 minuto…</span>;
+  if (pending) return <span className="hint">Consultando os tribunais — costuma levar de 30 a 60 segundos…</span>;
   if (state?.ok) return <span className="msg-ok">✓ {state.ok}</span>;
   if (state?.erro) return <span className="msg-err">⚠ {state.erro}</span>;
   return null;

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import * as store from "./store";
 import { formatarCnj, somenteDigitos, tribunalDoCnj, fmtDataHora } from "./format";
 import { datajud, provedorDeProcesso, type ProcessoRemoto } from "./providers";
+import type { ResultadoLote } from "./providers/datajud";
 import type { Processo } from "./types";
 import { notificarPendentes } from "./notify";
 
@@ -73,7 +74,7 @@ export async function upsertProcessoRemoto(
  * Na primeira carga gera só um alerta-resumo (não um por movimentação).
  */
 export async function aplicarRemoto(processo: Processo, remoto: ProcessoRemoto, fonte: string): Promise<number> {
-  const capa: Record<string, unknown> = { ultimo_check: store.agora(), ultimo_erro: null };
+  const capa: Record<string, unknown> = { ultimo_check: store.agora(), ultimo_erro: null, aviso_fonte: null };
   const set = (k: string, v: unknown) => {
     if (v !== null && v !== undefined && v !== "") capa[k] = v;
   };
@@ -143,12 +144,7 @@ export async function sincronizarProcesso(processo: Processo): Promise<number> {
     }
     if (!remoto && provider.nome !== "datajud") remoto = await datajud.consultarProcesso(processo.numero_cnj, processo.tribunal);
     if (!remoto) {
-      // Se já veio dado dessa fonte antes, um "0 resultados" agora é quase sempre instabilidade
-      // do DataJud, não o processo sumindo — não trata como "não encontrado".
-      const msg = processo.total_movimentacoes > 0
-        ? "A fonte não retornou o processo nesta consulta (já tinha andamentos antes — provável instabilidade; será tentado de novo)"
-        : "Processo não encontrado na fonte";
-      await store.atualizar("processos", processo.id, { ultimo_check: store.agora(), ultimo_erro: msg });
+      await registrarAusente(processo);
       return 0;
     }
     return await aplicarRemoto(processo, remoto, provider.nome);
@@ -159,46 +155,134 @@ export async function sincronizarProcesso(processo: Processo): Promise<number> {
   }
 }
 
-const PAUSA_ENTRE_CONSULTAS_MS = 1200;
+export const AVISO_FORA_DA_FONTE =
+  "Este processo não consta na base pública do CNJ (DataJud) — é o normal para processos em segredo de justiça. Os andamentos não chegam por aqui: acompanhe pelo PJe com a advogada ou importe as peças em PDF.";
+
+/** A fonte respondeu normalmente, mas sem esse processo. */
+async function registrarAusente(processo: Processo) {
+  if (processo.total_movimentacoes > 0) {
+    // Já veio dado dessa fonte antes: um "0 resultados" agora é quase sempre instabilidade
+    // do DataJud, não o processo sumindo — fica como erro pra ser tentado de novo.
+    await store.atualizar("processos", processo.id, {
+      ultimo_check: store.agora(),
+      ultimo_erro: "A fonte não retornou o processo nesta consulta (já tinha andamentos antes — provável instabilidade; será tentado de novo)",
+    });
+  } else {
+    // Nunca apareceu na fonte (tipicamente sigiloso): é uma característica do processo,
+    // não uma falha — vira aviso e não entra na contagem de erros do painel.
+    await store.atualizar("processos", processo.id, { ultimo_check: store.agora(), ultimo_erro: null, aviso_fonte: AVISO_FORA_DA_FONTE });
+  }
+}
+
+/** Executa `fn` para cada item com no máximo `n` em paralelo. */
+async function emParalelo<T>(itens: T[], fn: (item: T) => Promise<void>, n = 6) {
+  const fila = [...itens];
+  await Promise.all(Array.from({ length: Math.min(n, fila.length) }, async () => {
+    for (let item = fila.shift(); item !== undefined; item = fila.shift()) await fn(item);
+  }));
+}
 
 /**
- * Sincroniza os ativos (os checados há mais tempo primeiro), grava log e dispara notificações.
- * O DataJud às vezes leva 30s+ por consulta: com `orcamentoMs`, para de iniciar novas consultas
- * quando o tempo acaba e fecha o log como parcial — a próxima rodada continua de onde parou,
- * porque a fila é ordenada pelo último check. Sem isso a requisição estourava o tempo limite
- * da hospedagem no meio e o log ficava aberto para sempre.
+ * Verificação via DataJud em lote: uma requisição por tribunal (todos em paralelo) em vez de
+ * uma por processo. Falha de um tribunal inteiro (sobrecarga) vira UMA linha de erro no log e
+ * os processos ficam pendentes pra próxima rodada, sem marcar cada um como "com erro".
  */
-export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Promise<{ verificados: number; novas: number; erros: string[]; pendentes: number }> {
-  const inicio = Date.now();
-  const orcamento = opts.orcamentoMs ?? 240_000;
-  const logId = await store.iniciarSyncLog();
-  const processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
+async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: number) {
+  let verificados = 0;
+  let novas = 0;
+  let pendentes = 0;
+  const erros: string[] = [];
+  const grupos = new Map<string, Processo[]>();
+  for (const p of processos) {
+    const alias = p.tribunal || tribunalDoCnj(p.numero_cnj);
+    if (!alias) {
+      erros.push(`${p.numero_formatado}: não foi possível deduzir o tribunal`);
+      continue;
+    }
+    grupos.set(alias, [...(grupos.get(alias) ?? []), p]);
+  }
 
+  await Promise.all(
+    [...grupos].map(async ([alias, lista]) => {
+      let lote: ResultadoLote;
+      try {
+        lote = await datajud.consultarLote(alias, lista.map((p) => p.numero_cnj), { prazoFinal });
+      } catch (e) {
+        erros.push(`${alias.toUpperCase()} (${lista.length} processo(s) não verificados): ${e instanceof Error ? e.message : String(e)}`);
+        pendentes += lista.length;
+        return;
+      }
+      await emParalelo(lista, async (p) => {
+        const remoto = lote.encontrados.get(p.numero_cnj);
+        try {
+          if (remoto) {
+            const n = await aplicarRemoto(p, remoto, "datajud");
+            novas += n;
+            verificados++;
+          } else if (lote.parcial) {
+            pendentes++; // resposta parcial: ausência não prova nada — tenta na próxima rodada
+          } else {
+            await registrarAusente(p);
+            verificados++;
+          }
+        } catch (e) {
+          erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      });
+    }),
+  );
+  return { verificados, novas, erros, pendentes };
+}
+
+const PAUSA_ENTRE_CONSULTAS_MS = 1200;
+
+/** Caminho antigo, um processo por vez — só usado com provedor pago (Judit/Escavador), que não tem lote. */
+async function sincronizarUmPorUm(processos: Processo[], prazoFinal: number) {
   let verificados = 0;
   let novas = 0;
   let tentados = 0;
   const erros: string[] = [];
-  try {
-    for (const p of processos) {
-      if (Date.now() - inicio > orcamento) break;
-      if (tentados > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_CONSULTAS_MS));
-      tentados++;
-      try {
-        novas += await sincronizarProcesso(p);
-        verificados++;
-      } catch (e) {
-        erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
-      }
+  for (const p of processos) {
+    if (Date.now() > prazoFinal) break;
+    if (tentados > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_CONSULTAS_MS));
+    tentados++;
+    try {
+      novas += await sincronizarProcesso(p);
+      verificados++;
+    } catch (e) {
+      erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  } finally {
-    const pendentes = processos.length - tentados;
-    const notificados = await notificarPendentes().catch(() => 0);
-    await store.finalizarSyncLog(logId, {
-      processos_verificados: verificados,
-      novas_movimentacoes: novas,
-      erros: erros.length,
-      detalhes: { erros, notificados, pendentes, parcial: pendentes > 0 },
-    });
   }
   return { verificados, novas, erros, pendentes: processos.length - tentados };
+}
+
+/**
+ * Sincroniza todos os ativos, grava log e dispara notificações.
+ * Com o DataJud (padrão) a consulta é em lote — uma requisição por tribunal — e a carteira
+ * inteira cabe numa rodada. `orcamentoMs` limita o tempo total: o que não couber (fonte fora
+ * do ar ou lenta demais) fica como pendente no log e entra na próxima rodada. O log é sempre
+ * fechado no `finally`, pra nunca ficar "em andamento" pra sempre.
+ */
+export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Promise<{ verificados: number; novas: number; erros: string[]; pendentes: number }> {
+  const prazoFinal = Date.now() + (opts.orcamentoMs ?? 240_000);
+  const logId = await store.iniciarSyncLog();
+  const processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
+
+  let r = { verificados: 0, novas: 0, erros: [] as string[], pendentes: processos.length };
+  try {
+    r = provedorDeProcesso().nome === "datajud"
+      ? await sincronizarViaDataJudEmLote(processos, prazoFinal)
+      : await sincronizarUmPorUm(processos, prazoFinal);
+  } catch (e) {
+    r.erros.push(`Falha geral na atualização: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    const notificados = await notificarPendentes().catch(() => 0);
+    await store.finalizarSyncLog(logId, {
+      processos_verificados: r.verificados,
+      novas_movimentacoes: r.novas,
+      erros: r.erros.length,
+      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, parcial: r.pendentes > 0 },
+    });
+  }
+  return r;
 }
