@@ -22,6 +22,14 @@ if ($LASTEXITCODE -ge 8) {
   exit 1
 }
 
+# O apphosting.yaml desta instalacao aponta para o nosso endereco; no pacote volta o
+# valor de exemplo que o GUIA-INSTALACAO manda trocar. ReadAllText/WriteAllText leem e
+# gravam UTF-8 sem BOM (Get-Content/Set-Content do PowerShell 5.1 estragariam os acentos).
+$yaml = Join-Path $destino "apphosting.yaml"
+$txt = [IO.File]::ReadAllText($yaml)
+$txt = $txt -replace 'value: https://\S+\.hosted\.app', 'value: https://SEU-BACKEND.web.app # troque pela URL final'
+[IO.File]::WriteAllText($yaml, $txt)
+
 $suspeitos = Get-ChildItem $destino -Recurse -File -Include ".env.local", "firebase-key.json" -ErrorAction SilentlyContinue
 $suspeitos += Get-ChildItem $destino -Recurse -File -Filter "*firebase-adminsdk*" -ErrorAction SilentlyContinue
 if ($suspeitos) {
