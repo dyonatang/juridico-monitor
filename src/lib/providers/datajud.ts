@@ -38,7 +38,9 @@ export type ResultadoLote = {
 export class DataJudIndisponivel extends Error {}
 
 type DataJudHit = {
+  _id?: string;
   _source: {
+    "@timestamp"?: string;
     numeroProcesso: string;
     tribunal?: string;
     grau?: string;
@@ -61,7 +63,8 @@ const resultadoParcial = (json: DataJudResposta) => !!json.timed_out || (json._s
 
 /** Junta os "hits" de um mesmo processo (o DataJud retorna um por instância/grau) num ProcessoRemoto. */
 function montarRemoto(alias: string, digits: string, hits: DataJudHit[]): ProcessoRemoto {
-  const capa = hits[0]._source;
+  // Capa (classe, órgão etc.) do registro atualizado por último — é onde o processo está agora.
+  const capa = [...hits].sort((a, b) => (b._source["@timestamp"] ?? "").localeCompare(a._source["@timestamp"] ?? ""))[0]._source;
   const movs = new Map<string, MovimentacaoRemota>();
   let grauMaisAlto = capa.grau ?? null;
   for (const h of hits) {
@@ -171,39 +174,44 @@ export class DataJudProvider implements ProcessoProvider {
    */
   async consultarLote(alias: string, numeros: string[], opts: { prazoFinal?: number } = {}): Promise<ResultadoLote> {
     const encontrados = new Map<string, ProcessoRemoto>();
-    let parcial = false;
     let parcialFinal = false;
     const unicos = [...new Set(numeros.map(somenteDigitos))];
     for (let i = 0; i < unicos.length; i += MAX_POR_LOTE) {
-      let faltando = unicos.slice(i, i + MAX_POR_LOTE);
-      // Sob carga o DataJud devolve resposta parcial (alguns shards falham) e só parte dos
-      // processos vem. Repete a consulta só com os que faltaram, enquanto houver tempo.
-      for (let passada = 1; faltando.length > 0; passada++) {
+      const fatia = unicos.slice(i, i + MAX_POR_LOTE);
+      // Registros acumulados entre passadas, por número e por documento do índice (_id —
+      // um por grau/instância). Sob carga o DataJud responde com parte dos shards fora: aí
+      // faltam processos inteiros OU só um dos registros de um processo (ex.: veio o G1 e
+      // não o JE). Por isso, se a resposta foi parcial, repete a fatia INTEIRA e soma o que
+      // vier, até uma resposta completa ou acabar o tempo/tentativas.
+      const registros = new Map<string, Map<string, DataJudHit>>();
+      let parcial = true;
+      for (let passada = 1; parcial && passada <= TENTATIVAS; passada++) {
         let json: DataJudResposta;
         try {
           json = await this.buscar(
             alias,
-            { size: Math.min(faltando.length * 6, 1000), query: { terms: { numeroProcesso: faltando } } },
+            { size: Math.min(fatia.length * 6, 1000), query: { terms: { numeroProcesso: fatia } } },
             { timeoutMs: TIMEOUT_LOTE_MS, prazoFinal: opts.prazoFinal },
           );
         } catch (e) {
-          // Nova passada falhou mas a anterior já trouxe parte: devolve o que tem como parcial.
+          // Nova passada falhou mas uma anterior já trouxe parte: fica com o que tem, como parcial.
           if (passada > 1 && e instanceof DataJudIndisponivel) break;
           throw e;
         }
-        const porNumero = new Map<string, DataJudHit[]>();
         for (const h of json.hits?.hits ?? []) {
           const n = somenteDigitos(h._source.numeroProcesso ?? "");
-          if (!faltando.includes(n)) continue;
-          porNumero.set(n, [...(porNumero.get(n) ?? []), h]);
+          if (!fatia.includes(n)) continue;
+          const doProcesso = registros.get(n) ?? new Map<string, DataJudHit>();
+          const chave = h._id ?? `${h._source.grau ?? ""}`;
+          const atual = doProcesso.get(chave);
+          if (!atual || (h._source["@timestamp"] ?? "") >= (atual._source["@timestamp"] ?? "")) doProcesso.set(chave, h);
+          registros.set(n, doProcesso);
         }
-        for (const [n, hits] of porNumero) encontrados.set(n, montarRemoto(alias, n, hits));
-        faltando = faltando.filter((n) => !encontrados.has(n));
         parcial = resultadoParcial(json);
-        if (!parcial || passada >= TENTATIVAS) break;
-        await espera(2000);
+        if (parcial && passada < TENTATIVAS) await espera(2000);
       }
-      if (faltando.length && parcial) parcialFinal = true;
+      for (const [n, hits] of registros) encontrados.set(n, montarRemoto(alias, n, [...hits.values()]));
+      if (parcial) parcialFinal = true;
     }
     return { encontrados, parcial: parcialFinal };
   }

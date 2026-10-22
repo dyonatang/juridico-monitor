@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import { getApps, initializeApp, cert, applicationDefault, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore, type Query, type DocumentSnapshot } from "firebase-admin/firestore";
 import type { Alerta, Arquivo, DocumentoMonitorado, Movimentacao, Processo } from "./types";
+import { hashGravado } from "./movimento";
 
 let app: App | null = null;
 let resolvedProjectId: string | undefined;
@@ -189,13 +190,23 @@ export async function excluir(col: Colecao, id: string) {
 
 // ---------------------------------------------------------- Movimentações
 export async function listarMovimentacoes(processoId: string, limite?: number): Promise<Movimentacao[]> {
-  const r = await all<Movimentacao>(fs().collection("movimentacoes").where("processo_id", "==", processoId));
+  const todas = await all<Movimentacao>(fs().collection("movimentacoes").where("processo_id", "==", processoId));
+  // Esconde duplicatas antigas (gravadas antes da correção do prefixo de grau): fica a 1ª gravada.
+  todas.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+  const vistas = new Set<string>();
+  const r = todas.filter((m) => {
+    const k = hashGravado(m);
+    if (vistas.has(k)) return false;
+    vistas.add(k);
+    return true;
+  });
   r.sort((a, b) => b.data_hora.localeCompare(a.data_hora));
   return limite ? r.slice(0, limite) : r;
 }
+/** Identidades dos andamentos já gravados, recalculadas pelo conteúdo (ver movimento.ts). */
 export async function hashesDoProcesso(processoId: string): Promise<Set<string>> {
-  const r = await fs().collection("movimentacoes").where("processo_id", "==", processoId).select("hash").get();
-  return new Set(r.docs.map((d) => d.get("hash") as string));
+  const r = await fs().collection("movimentacoes").where("processo_id", "==", processoId).select("data_hora", "codigo", "descricao", "complemento").get();
+  return new Set(r.docs.map((d) => hashGravado(d.data() as Movimentacao)));
 }
 export async function inserirMovimentacoes(
   processoId: string,

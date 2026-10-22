@@ -7,7 +7,12 @@ import { COOKIE_SESSAO, validarSessao } from "@/lib/auth";
  */
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
-  if (!process.env.DASHBOARD_USER || !process.env.DASHBOARD_PASSWORD) return NextResponse.next(); // dev sem credenciais
+  if (!process.env.DASHBOARD_USER || !process.env.DASHBOARD_PASSWORD) {
+    // Sem credenciais configuradas só se libera em desenvolvimento local; em produção um
+    // segredo faltando NÃO pode abrir o sistema — falha fechado.
+    if (process.env.NODE_ENV !== "production") return NextResponse.next();
+    return new NextResponse("Sistema sem credenciais configuradas (DASHBOARD_USER/DASHBOARD_PASSWORD).", { status: 503 });
+  }
 
   const usuario = await validarSessao(req.cookies.get(COOKIE_SESSAO)?.value);
   if (usuario) {

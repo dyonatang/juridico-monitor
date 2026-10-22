@@ -1,15 +1,10 @@
-import { createHash } from "node:crypto";
 import * as store from "./store";
 import { formatarCnj, somenteDigitos, tribunalDoCnj, fmtDataHora } from "./format";
 import { datajud, provedorDeProcesso, type ProcessoRemoto } from "./providers";
 import type { ResultadoLote } from "./providers/datajud";
 import type { Processo } from "./types";
 import { notificarPendentes } from "./notify";
-
-const hashMov = (m: { dataHora: string; codigo?: number | null; descricao: string; complemento?: string | null }) =>
-  createHash("sha256")
-    .update(`${m.dataHora}|${m.codigo ?? ""}|${m.descricao}|${m.complemento ?? ""}`)
-    .digest("hex");
+import { hashMov } from "./movimento";
 
 /** Garante que o processo exista. Se for novo e "descoberto", gera alerta de novo processo. */
 export async function upsertProcessoRemoto(
