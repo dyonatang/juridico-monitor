@@ -57,3 +57,6 @@ agente-jusbr/.env
 # agendador (Cloud Functions)
 agendador/node_modules/
 !agendador/.env.juridico-assis
+
+# scripts temporários de manutenção
+/_*.mts
