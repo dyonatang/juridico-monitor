@@ -5,7 +5,7 @@ Acompanhamento processual do grupo: cadastra empresas, CPFs/CNPJs e processos, c
 ## Arquitetura (Google / Firebase)
 
 ```
-┌──────────────────────┐  Cloud Scheduler (diário)  ┌───────────────────┐
+┌──────────────────────┐  agendador (de hora em hora) ┌─────────────────┐
 │ Firebase App Hosting │ ─────────────────────────▶ │ /api/cron/sync     │──▶ DataJud (CNJ, grátis, por nº CNJ)
 │ (Next.js / Cloud Run)│                            │                   │──▶ Judit / Escavador (pago, por CPF/CNPJ)
 │                      │ ◀──────── webhook ──────── │ /api/webhooks/*    │
@@ -64,10 +64,19 @@ Publique as regras do Firestore (bloqueiam acesso direto de clientes; o servidor
 firebase deploy --only firestore:rules
 ```
 
-### 4. Agendar a sincronização — Cloud Scheduler
-Console Google Cloud → *Cloud Scheduler* → Criar job:
-- Frequência: `0 6,12,18 * * *` (06h, 12h, 18h) · Fuso `America/Sao_Paulo`
-- Alvo: HTTP · `GET https://SEU-APP/api/cron/sync?secret=CRON_SECRET`
+### 4. Agendar a sincronização — função `agendador`
+A pasta `agendador/` é uma Cloud Function agendada que chama `/api/cron/sync` de hora em hora,
+lendo o `CRON_SECRET` direto do Secret Manager (o mesmo segredo do App Hosting — o valor não
+fica em arquivo). Crie `agendador/.env.<ID-DO-PROJETO>` com a URL do sistema e publique:
+```bash
+echo APP_URL=https://SEU-APP > agendador/.env.SEU-PROJETO
+cd agendador && npm install && cd ..
+firebase deploy --only functions:agendador
+firebase functions:artifacts:setpolicy --location us-central1 --force
+```
+Cada rodada aparece no painel ("Última atualização") e em `sync_log`.
+(Alternativa sem função: Cloud Scheduler → job HTTP `GET https://SEU-APP/api/cron/sync` com cabeçalho
+`Authorization: Bearer <CRON_SECRET>`, frequência `0 * * * *`, fuso `America/Sao_Paulo`.)
 
 ### 5. Conectar o Claude (MCP)
 Servidor MCP em `https://SEU-APP/api/mcp`, protegido por Bearer token (`MCP_TOKEN`).

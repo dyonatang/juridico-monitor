@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Path $destino | Out-Null
 
 Write-Host "Copiando projeto (isso pode levar um minuto)..."
 
-robocopy $origem $destino /E /XD node_modules .next .git agente-jusbr /XF ".env.local" "firebase-key.json" "*-firebase-adminsdk-*.json" "*.log" /NFL /NDL /NJH /NJS | Out-Null
+robocopy $origem $destino /E /XD node_modules .next .git agente-jusbr /XF ".env.local" ".env.juridico-assis" "firebase-key.json" "*-firebase-adminsdk-*.json" "*.log" /NFL /NDL /NJH /NJS | Out-Null
 
 if ($LASTEXITCODE -ge 8) {
   Write-Error "robocopy falhou (codigo $LASTEXITCODE)"

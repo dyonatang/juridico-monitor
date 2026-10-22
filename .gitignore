@@ -53,3 +53,7 @@ agente-jusbr/perfil/
 agente-jusbr/logs/
 agente-jusbr/node_modules/
 agente-jusbr/.env
+
+# agendador (Cloud Functions)
+agendador/node_modules/
+!agendador/.env.juridico-assis
