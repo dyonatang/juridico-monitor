@@ -23,7 +23,11 @@ exports.sincronizarDeHoraEmHora = onSchedule(
     secrets: [CRON_SECRET],
     timeoutSeconds: 360,
     memory: "256MiB",
-    retryCount: 0, // a próxima hora já é a nova tentativa
+    // Até 2 novas tentativas se a CHAMADA falhar (ex.: 22/10 às 19h a invocação caiu na
+    // infraestrutura do Google antes de começar). O sistema responde 200 mesmo quando o CNJ
+    // falha, então a repetição só acontece em falha de infraestrutura, não de fonte.
+    retryCount: 2,
+    minBackoffSeconds: 60,
   },
   async () => {
     const url = `${APP_URL.value().replace(/\/$/, "")}/api/cron/sync`;
