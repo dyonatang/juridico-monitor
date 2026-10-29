@@ -61,6 +61,9 @@ type DataJudResposta = { timed_out?: boolean; _shards?: { failed?: number }; hit
 
 const resultadoParcial = (json: DataJudResposta) => !!json.timed_out || (json._shards?.failed ?? 0) > 0;
 
+/** Descrição dada a um movimento que o CNJ publica sem nome (ver montarRemoto). */
+export const DESCRICAO_SEM_NOME = "Andamento sem descrição no CNJ (consulte o jus.br)";
+
 /** Junta os "hits" de um mesmo processo (o DataJud retorna um por instância/grau) num ProcessoRemoto. */
 function montarRemoto(alias: string, digits: string, hits: DataJudHit[]): ProcessoRemoto {
   // Capa (classe, órgão etc.) do registro atualizado por último — é onde o processo está agora.
@@ -71,16 +74,20 @@ function montarRemoto(alias: string, digits: string, hits: DataJudHit[]): Proces
     const s = h._source;
     if (s.grau && s.grau > (grauMaisAlto ?? "")) grauMaisAlto = s.grau;
     for (const m of s.movimentos ?? []) {
-      if (!m.dataHora || !m.nome) continue;
+      if (!m.dataHora) continue;
+      // O CNJ manda parte dos movimentos sem nome (e quase sempre sem código) — no jus.br eles
+      // aparecem com texto próprio, ex.: "Processo Inspecionado". Antes eram descartados
+      // (148 em 22/10/2026); agora entram com uma descrição genérica pra não sumirem.
+      const nome = m.nome || (m.codigo ? `${DESCRICAO_SEM_NOME} (código ${m.codigo})` : DESCRICAO_SEM_NOME);
       const complemento =
         m.complementosTabelados?.map((c) => [c.nome, c.descricao].filter(Boolean).join(": ")).join("; ") ||
         null;
-      const key = `${m.dataHora}|${m.codigo ?? ""}|${m.nome}|${complemento ?? ""}`;
+      const key = `${m.dataHora}|${m.codigo ?? ""}|${nome}|${complemento ?? ""}`;
       if (!movs.has(key)) {
         movs.set(key, {
           dataHora: m.dataHora,
           codigo: m.codigo ?? null,
-          descricao: s.grau && hits.length > 1 ? `[${s.grau}] ${m.nome}` : m.nome,
+          descricao: s.grau && hits.length > 1 ? `[${s.grau}] ${nome}` : nome,
           complemento,
         });
       }

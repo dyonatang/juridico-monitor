@@ -20,8 +20,8 @@ const haQuanto = (iso: string) => {
 
 // Uma rodada nunca passa de ~4 min (orçamento do cron); aberta há mais que isso = foi interrompida.
 const LIMITE_RODADA_MS = 6 * 60_000;
-// Sem nenhuma rodada nesse intervalo, o agendamento automático provavelmente está parado.
-const LIMITE_SEM_RODADA_H = 26;
+// O agendamento roda de hora em hora: 2h sem nenhuma rodada = provavelmente parado.
+const LIMITE_SEM_RODADA_H = 2;
 
 function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   if (!log) {
@@ -35,9 +35,11 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
       </div>
     );
   }
-  const det = (log.detalhes ?? {}) as { erros?: string[]; pendentes?: number };
+  const det = (log.detalhes ?? {}) as { erros?: string[]; pendentes?: number; nao_verificados?: string[]; atrasados?: string[] };
   const erros = det.erros ?? [];
   const pendentes = det.pendentes ?? 0;
+  const naoVerificados = det.nao_verificados ?? [];
+  const atrasados = det.atrasados ?? [];
   const aberta = !log.finalizado_em;
   const emAndamento = aberta && Date.now() - new Date(log.iniciado_em).getTime() < LIMITE_RODADA_MS;
   const interrompida = aberta && !emAndamento;
@@ -51,6 +53,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   else if (interrompida) { tom = "bad"; icone = "⛔"; titulo = "A última atualização foi interrompida antes de terminar"; }
   else if (erros.length) { tom = "bad"; icone = "⚠️"; titulo = `Última atualização terminou com ${erros.length} erro(s)`; }
   else if (pendentes) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
+  if (!emAndamento && atrasados.length) { tom = "bad"; icone = "⚠️"; titulo = `${atrasados.length} processo(s) sem verificação há mais de 6 horas`; }
 
   return (
     <div className={`sync-status ${tom}`}>
@@ -74,12 +77,23 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
             Nenhuma atualização nas últimas {Math.round(semRodadaH)} horas — o agendamento automático pode estar parado.
           </div>
         )}
+        {atrasados.length > 0 && (
+          <div className="alerta">
+            Sem verificação há mais de 6 horas: {atrasados.join(", ")}. Se persistir, a fonte do CNJ pode estar fora do ar para esse tribunal.
+          </div>
+        )}
         {erros.length > 0 && (
           <details>
             <summary>Ver quais processos deram erro</summary>
             <ul>
               {erros.map((e, i) => <li key={i}>{e.length > 180 ? `${e.slice(0, 180)}…` : e}</li>)}
             </ul>
+          </details>
+        )}
+        {naoVerificados.length > 0 && (
+          <details>
+            <summary>Ver quais processos ficaram pra próxima rodada ({naoVerificados.length})</summary>
+            <ul>{naoVerificados.map((n) => <li key={n}>{n}</li>)}</ul>
           </details>
         )}
       </div>

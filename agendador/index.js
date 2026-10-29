@@ -35,10 +35,19 @@ exports.sincronizarDeHoraEmHora = onSchedule(
       headers: { Authorization: `Bearer ${CRON_SECRET.value()}` },
       signal: AbortSignal.timeout(330_000),
     });
-    const corpo = (await res.text()).slice(0, 1000);
+    const texto = await res.text();
+    const corpo = texto.slice(0, 1000);
     if (!res.ok) {
       logger.error("Atualização automática falhou", { status: res.status, corpo });
       throw new Error(`/api/cron/sync respondeu ${res.status}`);
+    }
+    // Registro de severidade ERROR é o que dispara o e-mail do alerta no Cloud Monitoring.
+    // Atraso não relança a função (não adianta repetir já: a fonte está fora), só avisa.
+    let atrasados = [];
+    try { atrasados = JSON.parse(texto).atrasados ?? []; } catch { /* resposta fora do formato: segue como concluída */ }
+    if (atrasados.length) {
+      logger.error(`Processos sem verificação há mais de 6 horas: ${atrasados.length}`, { atrasados, corpo });
+      return;
     }
     logger.info("Atualização automática concluída", { corpo });
   },

@@ -187,6 +187,7 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
   let novas = 0;
   let pendentes = 0;
   const erros: string[] = [];
+  const naoVerificados: string[] = []; // números dos processos que ficaram sem checar nesta rodada
   const grupos = new Map<string, Processo[]>();
   for (const p of processos) {
     const alias = p.tribunal || tribunalDoCnj(p.numero_cnj);
@@ -205,6 +206,7 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
       } catch (e) {
         erros.push(`${alias.toUpperCase()} (${lista.length} processo(s) não verificados): ${e instanceof Error ? e.message : String(e)}`);
         pendentes += lista.length;
+        naoVerificados.push(...lista.map((p) => p.numero_formatado));
         return;
       }
       await emParalelo(lista, async (p) => {
@@ -216,17 +218,19 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
             verificados++;
           } else if (lote.parcial) {
             pendentes++; // resposta parcial: ausência não prova nada — tenta na próxima rodada
+            naoVerificados.push(p.numero_formatado);
           } else {
             await registrarAusente(p);
             verificados++;
           }
         } catch (e) {
           erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
+          naoVerificados.push(p.numero_formatado);
         }
       });
     }),
   );
-  return { verificados, novas, erros, pendentes };
+  return { verificados, novas, erros, pendentes, naoVerificados };
 }
 
 const PAUSA_ENTRE_CONSULTAS_MS = 1200;
@@ -248,7 +252,7 @@ async function sincronizarUmPorUm(processos: Processo[], prazoFinal: number) {
       erros.push(`${p.numero_formatado}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  return { verificados, novas, erros, pendentes: processos.length - tentados };
+  return { verificados, novas, erros, pendentes: processos.length - tentados, naoVerificados: processos.slice(tentados).map((p) => p.numero_formatado) };
 }
 
 /**
@@ -258,12 +262,29 @@ async function sincronizarUmPorUm(processos: Processo[], prazoFinal: number) {
  * do ar ou lenta demais) fica como pendente no log e entra na próxima rodada. O log é sempre
  * fechado no `finally`, pra nunca ficar "em andamento" pra sempre.
  */
-export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Promise<{ verificados: number; novas: number; erros: string[]; pendentes: number }> {
+/** Processo sem verificação bem-sucedida há mais que isso entra em "atrasados" e gera alerta. */
+export const LIMITE_ATRASO_H = 6;
+
+export type ResultadoSincronizacao = {
+  verificados: number;
+  novas: number;
+  erros: string[];
+  pendentes: number;
+  /** Números dos processos que ficaram sem checar nesta rodada. */
+  naoVerificados: string[];
+  /** Dos não verificados, os que já estavam sem verificação há mais de LIMITE_ATRASO_H horas. */
+  atrasados: string[];
+};
+
+export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Promise<ResultadoSincronizacao> {
   const prazoFinal = Date.now() + (opts.orcamentoMs ?? 240_000);
   const logId = await store.iniciarSyncLog();
   const processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
 
-  let r = { verificados: 0, novas: 0, erros: [] as string[], pendentes: processos.length };
+  let r: Omit<ResultadoSincronizacao, "atrasados"> = {
+    verificados: 0, novas: 0, erros: [], pendentes: processos.length, naoVerificados: processos.map((p) => p.numero_formatado),
+  };
+  let atrasados: string[] = [];
   try {
     r = provedorDeProcesso().nome === "datajud"
       ? await sincronizarViaDataJudEmLote(processos, prazoFinal)
@@ -271,13 +292,20 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Prom
   } catch (e) {
     r.erros.push(`Falha geral na atualização: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
+    // Atrasado = não foi checado agora E a última checagem bem-sucedida já passou do limite.
+    // O sigiloso (aviso_fonte) é checado normalmente, então não cai aqui à toa.
+    const limite = Date.now() - LIMITE_ATRASO_H * 3_600_000;
+    const pendentes = new Set(r.naoVerificados);
+    atrasados = processos
+      .filter((p) => pendentes.has(p.numero_formatado) && (!p.ultimo_check || new Date(p.ultimo_check).getTime() < limite))
+      .map((p) => p.numero_formatado);
     const notificados = await notificarPendentes().catch(() => 0);
     await store.finalizarSyncLog(logId, {
       processos_verificados: r.verificados,
       novas_movimentacoes: r.novas,
       erros: r.erros.length,
-      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, parcial: r.pendentes > 0 },
+      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, parcial: r.pendentes > 0, nao_verificados: r.naoVerificados, atrasados },
     });
   }
-  return r;
+  return { ...r, atrasados };
 }
