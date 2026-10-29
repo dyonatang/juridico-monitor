@@ -18,6 +18,7 @@ import { getApps, initializeApp, cert, applicationDefault, type App } from "fire
 import { getFirestore, type Firestore, type Query, type DocumentSnapshot } from "firebase-admin/firestore";
 import type { Alerta, Arquivo, DocumentoMonitorado, Movimentacao, Processo } from "./types";
 import { hashGravado } from "./movimento";
+import { hojeEmBrasilia } from "./format";
 
 let app: App | null = null;
 let resolvedProjectId: string | undefined;
@@ -146,7 +147,7 @@ export type PrazoComProcesso = { prazo: Processo["proximos_prazos"] extends (inf
 /** Prazos/audiências futuros de todos os processos ativos, ordenados por data (mais próximo primeiro). */
 export async function listarProximosPrazos(limite = 10): Promise<PrazoComProcesso[]> {
   const processos = await listarProcessos({ apenasAtivos: true });
-  const hoje = agora().slice(0, 10);
+  const hoje = hojeEmBrasilia(); // não agora().slice(0,10): em UTC, das 21h às 24h já seria "amanhã"
   const todos: PrazoComProcesso[] = [];
   for (const processo of processos) {
     for (const prazo of processo.proximos_prazos ?? []) {

@@ -103,7 +103,15 @@ export function tribunalDoCnj(n: string): string | null {
   }
 }
 
+/** Data de hoje no fuso de Brasília, como "AAAA-MM-DD" (comparável com prazos e datas sem hora). */
+export const hojeEmBrasilia = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+
 export const fmtData = (iso: string | null | undefined) => {
+  // Data sem hora ("2026-11-24": prazo, audiência, ajuizamento) é um dia do calendário, não um
+  // instante: o new Date() a leria como meia-noite UTC e, no fuso de Brasília, ela viraria o dia
+  // anterior (a audiência de 24/11 aparecia como 23/11).
+  const soData = iso?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (soData) return `${soData[3]}/${soData[2]}/${soData[1]}`;
   const d = iso ? new Date(iso) : null;
   return d && !isNaN(d.getTime()) ? d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "—";
 };
