@@ -293,10 +293,13 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Prom
     r.erros.push(`Falha geral na atualização: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     // Atrasado = não foi checado agora E a última checagem bem-sucedida já passou do limite.
-    // O sigiloso (aviso_fonte) é checado normalmente, então não cai aqui à toa.
+    // Fica de fora quem nunca aparece na fonte (aviso_fonte, ex.: sigiloso): só conta como
+    // checado quando o tribunal responde 100%, então com o CNJ instável parecia "atrasado"
+    // sem haver nada pra buscar — gerou falso alarme em 05/11/2026 às 08h.
     const limite = Date.now() - LIMITE_ATRASO_H * 3_600_000;
     const pendentes = new Set(r.naoVerificados);
     atrasados = processos
+      .filter((p) => !p.aviso_fonte)
       .filter((p) => pendentes.has(p.numero_formatado) && (!p.ultimo_check || new Date(p.ultimo_check).getTime() < limite))
       .map((p) => p.numero_formatado);
     const notificados = await notificarPendentes().catch(() => 0);
