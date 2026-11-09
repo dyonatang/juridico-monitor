@@ -75,7 +75,7 @@ export default async function RelatorioPage() {
     <>
       <section className="rel-hero">
         <div className="scan" />
-        <span className="eyebrow">Relatório executivo · {fmtDataHora(r.gerado_em)}</span>
+        <span className="eyebrow">Relatório executivo · <span style={{ whiteSpace: "nowrap" }}>{fmtDataHora(r.gerado_em)}</span></span>
         <Manchete texto={r.manchete} />
         <p className="resumo entra" style={{ animationDelay: "500ms" }}>{r.resumo}</p>
         <div className="meta-linha entra" style={{ animationDelay: "700ms" }}>
@@ -91,10 +91,10 @@ export default async function RelatorioPage() {
       <div className="grid2">
         <Revela><Card><div className="card-pad"><Termometro estado={r.termometro} motivo={r.termometro_motivo} /></div></Card></Revela>
         <Revela atraso={120}>
-          <div className="stats" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", marginBottom: 0, height: "100%" }}>
-            <div className="stat"><div className="lbl">Pedem atenção</div><div className="val" style={{ color: emAtencao ? "var(--warn)" : undefined }}><Contador valor={emAtencao} /></div><div className="sub">de {r.processos.length} processos</div></div>
-            <div className="stat"><div className="lbl">Prazos em 30 dias</div><div className="val"><Contador valor={em30} /></div><div className="sub">registrados no sistema</div></div>
-            <div className="stat"><div className="lbl">Próximos passos</div><div className="val"><Contador valor={r.proximos_passos.length} /></div><div className="sub">{r.proximos_passos.filter((p) => p.urgencia === "agora").length} para agora</div></div>
+          <div className="stats tres" style={{ marginBottom: 0, height: "100%" }}>
+            <div className="stat"><div className="lbl">Atenção</div><div className="val" style={{ color: emAtencao ? "var(--warn)" : undefined }}><Contador valor={emAtencao} /></div><div className="sub">de {r.processos.length} processos</div></div>
+            <div className="stat"><div className="lbl">Prazos</div><div className="val"><Contador valor={em30} /></div><div className="sub">nos próximos 30 dias</div></div>
+            <div className="stat"><div className="lbl">Passos</div><div className="val"><Contador valor={r.proximos_passos.length} /></div><div className="sub">{r.proximos_passos.filter((p) => p.urgencia === "agora").length} para agora</div></div>
           </div>
         </Revela>
       </div>

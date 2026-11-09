@@ -126,6 +126,7 @@ const saudacao = () => {
   return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
 };
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const brlCurto = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2 });
 
 export default async function Painel() {
   let dados;
@@ -237,7 +238,7 @@ export default async function Painel() {
           <Sparkline valores={semanas.slice(-12).map((s) => s.valor)} />
         </Link>
         <Stat href="/alertas" label="Alertas pendentes" value={alertas.length} tone={alertas.length ? "alert" : "ok"} sub={`${novosProc} processo(s) novo(s) · ${alertas.length - novosProc} andamento(s)`} />
-        <Stat href="/processos" label="Valor das causas" value={brl(valorCausas)} sub={`soma de ${comValor} processo(s) com valor informado`} />
+        <Stat href="/processos" label="Valor das causas" value={brlCurto(valorCausas)} sub={`${brl(valorCausas)} · soma de ${comValor} processo(s) com valor informado`} />
       </div>
 
       <div className="grid2">

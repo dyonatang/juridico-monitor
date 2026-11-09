@@ -512,3 +512,31 @@ td .sub, .sub { font-size: 12px; color: var(--ink-2); }
   .revela { opacity: 1; transform: none; }
   .rel-hero .scan { display: none; }
 }
+
+/* ---------- Revisão de quebras de linha (mobile) ---------- */
+th { white-space: nowrap; }
+.btn { white-space: nowrap; }
+.eyebrow { flex-wrap: wrap; row-gap: 2px; }
+/* números de processo (CNJ) e datas nunca partem no hífen/ponto */
+td .link, td a.mono, .fase-grupo li a, .passos .det a, .destaque > a, .processo-hero h1 { white-space: nowrap; }
+/* etiquetas longas quebram dentro do cartão em vez de empurrar a tela */
+.pill { max-width: 100%; }
+.pill.neutral { white-space: normal; }
+.feed li > div { min-width: 0; overflow-wrap: anywhere; }
+.feed li > .btn { align-self: start; } /* não estica na altura da linha */
+.stats.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 560px) {
+  .stats.tres { grid-template-columns: minmax(0, 1fr); }
+  .stat .val { font-size: 28px; }
+  .stat .lbl { letter-spacing: 0.04em; font-size: 10.5px; }
+  .orbita .cabeca span { display: none; }
+  /* no celular o botão do arquivo desce para baixo do texto */
+  .feed li:has(> .btn) { grid-template-columns: 4px minmax(0, 1fr); }
+  .feed li > .btn { grid-column: 2; justify-self: start; }
+}
+/* menu lateral: a etiqueta "novo" não divide o espaço com o rótulo */
+.nav a .rot { white-space: nowrap; }
+.nav a .novo-tag { flex: 0 0 auto; }
+/* 3 cartões do relatório dentro de meia coluna: rótulo mais compacto */
+.stats.tres .stat { padding: 16px 14px; }
+.stats.tres .lbl { letter-spacing: 0.04em; font-size: 10.5px; }
