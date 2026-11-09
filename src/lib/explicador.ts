@@ -4,8 +4,7 @@
  *  - explicarAndamentos: para cada andamento novo, 1-3 frases em português simples dizendo o
  *    que aconteceu, se exige providência e a importância. Roda no fim da atualização de hora
  *    em hora, só para andamentos recentes (não para a carga inicial de processos antigos).
- *  - gerarFicha: resumo do caso sob demanda (situação, quem é quem, pendências, próximo passo
- *    e mensagem pronta para o Balcão Virtual).
+ *  - gerarFicha: resumo do caso sob demanda (situação, quem é quem, pendências e próximo passo).
  *
  * Regra de ouro: só afirmar o que está nos dados. O DataJud entrega o NOME do andamento
  * ("Juntada de Petição", "Conclusos para despacho"), não o conteúdo da peça — então a IA
@@ -144,7 +143,6 @@ const FichaSchema = z.object({
   ultima_decisao: z.string().nullable().describe("a decisão/despacho mais recente e o que ela determinou, se os dados mostrarem; null se não houver"),
   pendencias: z.array(z.string()).describe("o que está pendente para o processo andar (ex.: citação de alguém, prazo de manifestação, perícia)"),
   proximo_passo: z.string().nullable().describe("o que o grupo pode fazer agora para o processo andar, de forma concreta"),
-  roteiro_balcao: z.string().describe("mensagem curta e educada, pronta para enviar ao atendente do Balcão Virtual do tribunal: identifica a parte e o número, diz o que se quer saber/pedir. Sem inventar fatos."),
   limites: z.array(z.string()).describe("o que NÃO dá para saber com estes dados (ex.: conteúdo de decisões que só aparecem pelo nome)"),
 });
 export type Ficha = z.infer<typeof FichaSchema> & { gerada_em: string; modelo: string };

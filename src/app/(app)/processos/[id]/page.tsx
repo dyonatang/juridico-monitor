@@ -69,7 +69,10 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
       <BackLink href="/processos">Processos</BackLink>
       <div className="topbar">
         <div>
-          <h1 className="mono" style={{ fontFamily: '"IBM Plex Mono", monospace', fontWeight: 500, fontSize: 24 }}>{p.numero_formatado}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h1 className="mono" style={{ fontFamily: '"IBM Plex Mono", monospace', fontWeight: 500, fontSize: 24 }}>{p.numero_formatado}</h1>
+            <CopiarTexto texto={p.numero_formatado} rotulo="Copiar número" />
+          </div>
           <p>{[p.descricao, doc ? doc.apelido || doc.nome : null].filter(Boolean).join(" · ") || "sem descrição"}</p>
         </div>
         <div className="actions-row">
@@ -243,7 +246,7 @@ function FichaDoCaso({ id, p }: { id: string; p: NonNullable<Awaited<ReturnType<
         <div className="card-b">
           <p className="empty">
             Resumo do processo feito pela IA a partir dos andamentos e dos PDFs importados: em que pé está, quem é quem, o que falta e
-            uma mensagem pronta para o Balcão Virtual. Leva cerca de 1 minuto.
+            o próximo passo. Leva cerca de 1 minuto.
           </p>
         </div>
       </Card>
@@ -259,9 +262,6 @@ function FichaDoCaso({ id, p }: { id: string; p: NonNullable<Awaited<ReturnType<
         {f.quem_e_quem.length > 0 && (
           <><h3>Quem é quem</h3><ul>{f.quem_e_quem.map((x, i) => <li key={i}><b>{x.nome}</b> — {x.papel}</li>)}</ul></>
         )}
-        <h3>Mensagem para o Balcão Virtual</h3>
-        <blockquote>{f.roteiro_balcao}</blockquote>
-        <CopiarTexto texto={f.roteiro_balcao} />
         {f.limites.length > 0 && (
           <p className="sub" style={{ marginTop: 12 }}>
             <b>Limites desta ficha:</b> {f.limites.join(" ")} A ficha é um apoio, não substitui a análise da advogada.
