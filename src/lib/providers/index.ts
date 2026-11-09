@@ -22,7 +22,14 @@ export function provedorPremium(): ProcessoProvider | null {
   return null;
 }
 
-/** Provedor usado para acompanhar um processo específico (por número CNJ). */
+/**
+ * Provedor usado para acompanhar um processo específico (por número CNJ).
+ * Padrão: DataJud (gratuito), MESMO com provedor pago configurado — o pago serve para
+ * DESCOBRIR processos novos por CPF/CNPJ; usá-lo também na atualização de hora em hora
+ * cobraria cada consulta (e trocaria a consulta em lote por uma por processo).
+ * Para acompanhar pelo provedor pago, defina PROVEDOR_ACOMPANHAMENTO=premium.
+ */
 export function provedorDeProcesso(): ProcessoProvider {
-  return provedorPremium() ?? datajud;
+  if ((process.env.PROVEDOR_ACOMPANHAMENTO || "").toLowerCase() === "premium") return provedorPremium() ?? datajud;
+  return datajud;
 }
