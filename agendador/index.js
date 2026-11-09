@@ -58,14 +58,10 @@ exports.sincronizarDeHoraEmHora = onSchedule(
  *
  * O e-mail de alerta (Cloud Monitoring) olha só os registros ERROR DESTA função — os da
  * atualização de hora em hora ficam nos logs para diagnóstico, mas não geram e-mail.
- * Assim chega no máximo 1 e-mail por semana, e só quando houve problema.
- *
- * "Problema" = algum processo ficou mais de 6h sem verificação (atrasados), rodada que
- * começou e nunca terminou, ou 3+ horas sem nenhuma rodada. Erros pontuais do CNJ
- * (429, resposta parcial) são normais e recuperados na hora seguinte: entram só como contagem.
+ * Assim chega no máximo 1 e-mail por semana, e só quando houve problema que pede atenção
+ * (critérios em resumo.js: oscilação do CNJ que se resolve em poucas horas não conta).
  */
-const HORAS_SEMANA = 7 * 24;
-const TOLERANCIA_HORAS_SEM_RODADA = 2;
+const { avaliarSemana, HORAS_SEMANA, HORA } = require("./resumo");
 
 exports.resumoSemanal = onSchedule(
   {
@@ -81,43 +77,20 @@ exports.resumoSemanal = onSchedule(
     if (!getApps().length) initializeApp();
 
     const fim = Date.now();
-    const inicio = fim - HORAS_SEMANA * 3600_000;
+    const inicio = fim - HORAS_SEMANA * HORA;
     const snap = await getFirestore()
       .collection("sync_log")
       .where("iniciado_em", ">=", new Date(inicio).toISOString())
       .get();
 
-    const horas = new Set();
-    let inacabadas = 0;
-    let comErro = 0;
-    const atrasados = new Set();
-    for (const doc of snap.docs) {
-      const r = doc.data();
-      const t = Date.parse(r.iniciado_em);
-      if (Number.isNaN(t)) continue;
-      horas.add(Math.floor(t / 3600_000));
-      if (!r.finalizado_em && fim - t > 3600_000) inacabadas++;
-      if (r.erros > 0) comErro++;
-      for (const p of r.detalhes?.atrasados ?? []) atrasados.add(typeof p === "string" ? p : p?.numero ?? JSON.stringify(p));
-    }
-    const horasSemRodada = Math.max(0, HORAS_SEMANA - horas.size);
-
-    const problemas = [];
-    if (atrasados.size) problemas.push(`${atrasados.size} processo(s) ficaram mais de 6h sem verificação (${[...atrasados].join(", ")})`);
-    if (inacabadas) problemas.push(`${inacabadas} rodada(s) começaram e não terminaram`);
-    if (horasSemRodada > TOLERANCIA_HORAS_SEM_RODADA) problemas.push(`${horasSemRodada} hora(s) sem nenhuma atualização`);
-
-    const resumo = {
-      periodo: `${new Date(inicio).toISOString()} a ${new Date(fim).toISOString()}`,
-      rodadas: snap.size,
-      horas_com_rodada: horas.size,
-      rodadas_com_erro_pontual: comErro,
-    };
+    const { problemas, resumo } = avaliarSemana(snap.docs.map((d) => d.data()), fim);
+    const dados = { periodo: `${new Date(inicio).toISOString()} a ${new Date(fim).toISOString()}`, ...resumo };
     if (problemas.length) {
       // write() em vez de error(): grava a mensagem limpa, sem o "Error:" e a pilha de chamadas.
-      logger.write({ severity: "ERROR", message: `Jurídico Monitor — semana com problema na atualização: ${problemas.join("; ")}.`, ...resumo });
+      // O alerta extrai o texto depois do primeiro ": " (marcador `resumo` da política).
+      logger.write({ severity: "ERROR", message: `Jurídico Monitor — semana com problema na atualização: ${problemas.join("; ")}.`, ...dados });
     } else {
-      logger.info("Jurídico Monitor — semana sem problemas na atualização.", resumo);
+      logger.info("Jurídico Monitor — semana sem problemas na atualização.", dados);
     }
   },
 );
