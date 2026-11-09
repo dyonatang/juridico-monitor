@@ -318,6 +318,26 @@ export async function salvarExplicacoes(itens: { id: string; explicacao: string;
     await batch.commit();
   });
 }
+/**
+ * 2.0 (gráficos): andamentos pela data do ATO (não da gravação) desde `desdeDia` (AAAA-MM-DD),
+ * só com os campos dos gráficos e sem as duplicatas antigas. Consulta de um campo só (sem índice).
+ */
+export function movimentacoesPorDataDoAto(desdeDia: string): Promise<Pick<Movimentacao, "processo_id" | "data_hora" | "importancia">[]> {
+  return lembrar(`porAto:${desdeDia}`, async () => {
+    const r = await fs().collection("movimentacoes").where("data_hora", ">=", desdeDia)
+      .select("processo_id", "data_hora", "codigo", "descricao", "complemento", "importancia").get();
+    const vistas = new Set<string>();
+    const out: Pick<Movimentacao, "processo_id" | "data_hora" | "importancia">[] = [];
+    for (const d of r.docs) {
+      const m = d.data() as Movimentacao;
+      const k = `${m.processo_id}|${hashGravado(m)}`;
+      if (vistas.has(k)) continue;
+      vistas.add(k);
+      out.push({ processo_id: m.processo_id, data_hora: m.data_hora, importancia: m.importancia ?? null });
+    }
+    return out;
+  });
+}
 export function movimentacoesRecentes(desdeISO: string, limite = 300): Promise<Movimentacao[]> {
   const desde = desdeISO.slice(0, 16); // arredonda ao minuto para a memória ser reaproveitada (inclui até 1 min a mais)
   return lembrar(`recentes:${desde}:${limite}`, () =>

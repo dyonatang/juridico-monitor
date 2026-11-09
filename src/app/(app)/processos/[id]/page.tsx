@@ -20,7 +20,10 @@ import { iaDisponivel } from "@/lib/explicador";
 import { CopiarTexto } from "@/components/copiar-texto";
 import { registrarAuditoria } from "@/lib/auditoria";
 import { usuarioAtual } from "@/lib/usuarios";
-import type { PontoControvertido } from "@/lib/types";
+import type { Movimentacao, PontoControvertido } from "@/lib/types";
+import { fasesDoRelatorio, ultimoRelatorio } from "@/lib/relatorio";
+import { FASES, FASE_ROTULO, type Fase } from "@/lib/fases";
+import { Colunas } from "@/components/graficos";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +42,10 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
   const { id } = await params;
   // O id da rota é o próprio número CNJ (id do documento) — dá pra buscar tudo de uma vez,
   // em vez de 4 idas e voltas seguidas ao banco (São Paulo) a partir do servidor (EUA).
-  const [p, movs, docs, arquivos, eu] = await Promise.all([
+  const [p, movs, docs, arquivos, eu, rel] = await Promise.all([
     store.getProcesso(id), store.listarMovimentacoes(id), store.listarDocumentos(), store.listarArquivosDoProcesso(id),
     usuarioAtual().catch(() => null), // já lido pelo layout (cache da requisição)
+    ultimoRelatorio().catch(() => null),
   ]);
   if (!p) notFound();
   // Registro de auditoria depois que a página já foi enviada (não atrasa a abertura).
@@ -64,16 +68,30 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
     ["Fonte", `${p.provider ?? "datajud"} · último check ${fmtDataHora(p.ultimo_check)}`],
   ];
 
+  // Fase: a da ficha (mais detalhada) vale mais que a do relatório da carteira.
+  const doRel = fasesDoRelatorio(rel).get(id);
+  const fase: { fase: Fase; motivo: string; fonte: string } | null = p.ficha?.fase
+    ? { fase: p.ficha.fase, motivo: p.ficha.fase_motivo ?? "", fonte: `a ficha do caso de ${fmtData(p.ficha.gerada_em)}` }
+    : doRel ? { fase: doRel.fase, motivo: doRel.frase, fonte: `o relatório executivo de ${fmtData(rel!.gerado_em)}` } : null;
+
   return (
     <>
       <BackLink href="/processos">Processos</BackLink>
-      <div className="topbar">
+      <div className="processo-hero entra">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <h1 className="mono" style={{ fontFamily: '"IBM Plex Mono", monospace', fontWeight: 500, fontSize: 24 }}>{p.numero_formatado}</h1>
+          <span className="eyebrow">{[p.tribunal?.toUpperCase(), p.classe].filter(Boolean).join(" · ") || "Processo"}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+            <h1>{p.numero_formatado}</h1>
             <CopiarTexto texto={p.numero_formatado} rotulo="Copiar número" />
           </div>
-          <p>{[p.descricao, doc ? doc.apelido || doc.nome : null].filter(Boolean).join(" · ") || "sem descrição"}</p>
+          <p className="desc">{[p.descricao, doc ? doc.apelido || doc.nome : null].filter(Boolean).join(" · ") || "sem descrição"}</p>
+          <div className="chips">
+            <Pill tone={p.ativo ? "ok" : "neutral"}>{p.ativo ? "● monitorando" : "pausado"}</Pill>
+            {fase && <Pill tone="accent">{FASE_ROTULO[fase.fase]}</Pill>}
+            {p.classificacao_risco && <Pill tone={RISCO_TONE[p.classificacao_risco]}>risco {RISCO_LABEL[p.classificacao_risco].toLowerCase()}</Pill>}
+            <Pill>{movs.length} andamentos</Pill>
+            {p.valor_causa ? <Pill>{p.valor_causa.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</Pill> : null}
+          </div>
         </div>
         <div className="actions-row">
           <form action={sincronizarProcessoAction.bind(null, id)}><SubmitButton>Consultar agora</SubmitButton></form>
@@ -90,6 +108,8 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
           <b>Como está:</b> {p.resumo_status}
         </div>
       )}
+
+      {fase && <Jornada fase={fase.fase} motivo={fase.motivo} fonte={fase.fonte} />}
 
       <FichaDoCaso id={id} p={p} />
 
@@ -217,9 +237,15 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
       >
         <div className="card-b">
           {movs.length === 0 && <p className="empty">Nenhuma movimentação importada ainda.</p>}
+          {movs.length > 3 && (
+            <div style={{ padding: "10px 0 6px", borderBottom: "1px solid var(--line)", marginBottom: 8 }}>
+              <div className="hint" style={{ fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", fontSize: 10.5, marginBottom: 4 }}>Ritmo · andamentos por mês (24 meses)</div>
+              <Colunas dados={porMes(movs)} altura={150} rotuloCada={3} />
+            </div>
+          )}
           <ol className="timeline">
             {movs.map((m) => (
-              <li key={m.id}>
+              <li key={m.id} className={m.importancia ? `imp-${m.importancia}` : undefined}>
                 <div className="d">{fmtDataHora(m.data_hora)}{m.codigo ? ` · cód. ${m.codigo}` : ""} · {m.fonte}</div>
                 <b>{m.descricao}</b>{" "}
                 {m.importancia && <Pill tone={IMPORTANCIA[m.importancia].tom}>{IMPORTANCIA[m.importancia].rotulo}</Pill>}
@@ -232,6 +258,43 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
         </div>
       </Card>
     </>
+  );
+}
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+/** Andamentos por mês nos últimos 24 meses (data do ato, fuso de São Paulo). */
+function porMes(movs: Movimentacao[]) {
+  const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  const meses = Array.from({ length: 24 }, (_, i) => {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - 23 + i, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const cont = new Map(meses.map((m) => [m, 0]));
+  for (const m of movs) {
+    const k = new Date(m.data_hora).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).slice(0, 7);
+    if (cont.has(k)) cont.set(k, cont.get(k)! + 1);
+  }
+  return meses.map((m) => {
+    const rot = `${MESES[Number(m.slice(5)) - 1]}/${m.slice(2, 4)}`;
+    return { rotulo: rot, valor: cont.get(m)!, dica: rot };
+  });
+}
+
+/** Trilha das fases em perspectiva: feitas em gradiente, a atual pulsando. */
+function Jornada({ fase, motivo, fonte }: { fase: Fase; motivo: string; fonte: string }) {
+  const atual = FASES.indexOf(fase as (typeof FASES)[number]);
+  return (
+    <Card title="Jornada do processo" hint={`segundo a ${fonte}`}>
+      <div className="jornada">
+        <div className="trilha">
+          {FASES.map((f, i) => {
+            const cls = fase === "encerrado" ? "feita" : i < atual ? "feita" : i === atual ? "atual" : "";
+            return <div key={f} className={`etapa ${cls}`}><i />{FASE_ROTULO[f]}</div>;
+          })}
+        </div>
+        <p className="nota">{fase === "indefinida" ? "Os dados ainda não mostram em que fase o processo está. " : ""}{motivo}</p>
+      </div>
+    </Card>
   );
 }
 

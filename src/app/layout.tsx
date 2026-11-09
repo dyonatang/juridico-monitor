@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,22 +20,29 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1b2a41",
+  themeColor: "#050b18",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/** Tema: escuro por padrão (visual 2.0); "claro" quando a pessoa escolhe no menu (cookie `tema`). */
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const tema = (await cookies()).get("tema")?.value === "light" ? "light" : "dark";
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" data-theme={tema}>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <div className="fundo" aria-hidden="true"><i /><i /><i /></div>
+        {children}
+      </body>
     </html>
   );
 }

@@ -94,8 +94,8 @@ export async function analisarComClaude(entrada: { pdf?: Buffer; texto?: string;
   conteudo.push({ type: "text", text: `${entrada.contexto ? entrada.contexto + "\n" : ""}Extraia os dados deste documento conforme o formato.` });
 
   const response = await client.messages.create({
-    model: process.env.ANTHROPIC_MODEL || "claude-opus-5",
-    max_tokens: 8000,
+    model: process.env.ANTHROPIC_MODEL || "claude-fable-5-2",
+    max_tokens: 16000,
     system: INSTRUCOES,
     messages: [{ role: "user", content: conteudo }],
     output_config: { format: zodOutputFormat(AnaliseSchema) },

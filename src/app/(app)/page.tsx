@@ -5,6 +5,13 @@ import { Card, Stat, Pill, SubmitButton } from "@/components/ui";
 import { ItemLink, RowLink } from "@/components/row-link";
 import { SyncButton } from "@/components/sync-button";
 import { marcarLidoAction, sincronizarTudoAction } from "@/app/actions";
+import { Orbita, type NoOrbita, type NucleoOrbita } from "@/components/orbita";
+import { Colunas, MapaCalor, Ranking, Segmentos, Sparkline } from "@/components/graficos";
+import { ddmmDe, inicioGraficos, porDia, porRisco, porSemana, porTribunal, ultimosDias, vinculos } from "@/lib/painel-dados";
+import { fasesDoRelatorio, ultimoRelatorio } from "@/lib/relatorio";
+import { FASES, FASE_COR, FASE_ROTULO, type Fase } from "@/lib/fases";
+import { nomeModelo } from "@/lib/explicador";
+import { usuarioAtual } from "@/lib/usuarios";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +121,12 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   );
 }
 
+const saudacao = () => {
+  const h = Number(new Date().toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }));
+  return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+};
+const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
 export default async function Painel() {
   let dados;
   try {
@@ -124,6 +137,9 @@ export default async function Painel() {
       store.movimentacoesRecentes(new Date(Date.now() - 7 * 86400000).toISOString(), 10),
       store.listarProximosPrazos(8),
       store.ultimoSyncLog(),
+      store.movimentacoesPorDataDoAto(inicioGraficos()),
+      ultimoRelatorio().catch(() => null),
+      usuarioAtual().catch(() => null),
     ]);
   } catch (e) {
     return (
@@ -132,69 +148,143 @@ export default async function Painel() {
       </div>
     );
   }
-  const [processos, docs, alertas, movs, prazos, ultimoLog] = dados;
-  const docsPorId = new Map(docs.map((d) => [d.id, d]));
+  const [processos, docs, alertas, movs, prazos, ultimoLog, movsGraf, relatorio, eu] = dados;
   const porId = new Map(processos.map((p) => [p.id, p]));
   const comErro = processos.filter((p) => p.ultimo_erro);
   const novosProc = alertas.filter((a) => a.tipo === "novo_processo").length;
 
-  // agrupamento por CNPJ (+ "Família" pra CPFs sem vínculo a um CNPJ)
-  const grupoDoDocumento = (docId: string | null | undefined): string => {
-    if (!docId) return "_fam";
-    const d = docsPorId.get(docId);
-    if (!d) return "_fam";
-    if (d.tipo === "CNPJ") return d.id;
-    return d.vinculo_id && docsPorId.get(d.vinculo_id)?.tipo === "CNPJ" ? d.vinculo_id : "_fam";
-  };
-  const grupos = new Map<string, { id: string | null; nome: string; sub: string; ativos: number; alertas: number; ultimo: string | null }>();
-  for (const d of docs.filter((d) => d.tipo === "CNPJ")) grupos.set(d.id, { id: d.id, nome: d.apelido || d.nome, sub: d.apelido ? d.nome : "", ativos: 0, alertas: 0, ultimo: null });
-  grupos.set("_fam", { id: null, nome: "Família / sem vínculo", sub: `${docs.filter((d) => d.tipo === "CPF" && grupoDoDocumento(d.id) === "_fam").length} CPF(s) monitorado(s)`, ativos: 0, alertas: 0, ultimo: null });
-  for (const p of processos) {
-    const g = grupos.get(grupoDoDocumento(p.documento_id)) ?? grupos.get("_fam")!;
-    g.ativos++;
-  }
+  // ---------------------------------------------------------------- vínculos (ordem e cor fixas)
+  const { lista: listaVinc, grupoDe, cor: corVinc } = vinculos(docs);
+  const grupos = new Map(listaVinc.map((g) => [g.id, { ...g, ativos: 0, alertas: 0, ultimo: null as string | null }]));
+  const subFam = `${docs.filter((d) => d.tipo === "CPF" && grupoDe(d.id) === "_fam").length} CPF(s) monitorado(s)`;
+  for (const p of processos) grupos.get(grupoDe(p.documento_id))!.ativos++;
+  const comAlerta = new Set<string>();
   for (const a of alertas) {
     const p = a.processo_id ? porId.get(a.processo_id) : null;
-    const g = grupos.get(grupoDoDocumento(p?.documento_id)) ?? grupos.get("_fam")!;
-    g.alertas++;
+    if (p) comAlerta.add(p.id);
+    grupos.get(grupoDe(p?.documento_id))!.alertas++;
   }
   for (const m of movs) {
-    const p = porId.get(m.processo_id);
-    const g = grupos.get(grupoDoDocumento(p?.documento_id)) ?? grupos.get("_fam")!;
+    const g = grupos.get(grupoDe(porId.get(m.processo_id)?.documento_id))!;
     if (!g.ultimo) g.ultimo = `${fmtDataHora(m.data_hora).slice(0, 5)} — ${m.descricao}`;
   }
 
+  // ---------------------------------------------------------------- séries dos gráficos
+  const movsAtivos = movsGraf.filter((m) => porId.has(m.processo_id));
+  const semanas = porSemana(movsAtivos, 26);
+  const dias = porDia(movsAtivos, 18);
+  const ult30 = ultimosDias(movsAtivos, 30);
+  const recentes7 = new Set(movsAtivos.filter((m) => Date.now() - new Date(m.data_hora).getTime() < 7 * 86400000).map((m) => m.processo_id));
+  const valorCausas = processos.reduce((s, p) => s + (p.valor_causa ?? 0), 0);
+  const comValor = processos.filter((p) => p.valor_causa).length;
+  const fases = fasesDoRelatorio(relatorio);
+  const contFase = new Map<Fase, number>();
+  for (const p of processos) { const f = fases.get(p.id)?.fase; if (f) contFase.set(f, (contFase.get(f) ?? 0) + 1); }
+  const semFase = processos.filter((p) => !fases.has(p.id)).length;
+
+  const nucleos: NucleoOrbita[] = listaVinc.filter((g) => grupos.get(g.id)!.ativos > 0).map((g) => ({ id: g.id, nome: g.nome, cor: corVinc.get(g.id)! }));
+  const nos: NoOrbita[] = processos.map((p) => ({
+    id: p.id,
+    numero: p.numero_formatado,
+    descricao: p.descricao ?? p.classe ?? "",
+    nucleo: grupoDe(p.documento_id),
+    andamentos: p.total_movimentacoes ?? 0,
+    recente: recentes7.has(p.id),
+    alerta: comAlerta.has(p.id),
+    ultimo: ddmmDe(p.ultima_movimentacao_em),
+  }));
+  const primeiroNome = eu?.nome.split(/\s+/)[0];
+
   return (
     <>
-      <div className="topbar">
-        <div>
-          <h1>Painel</h1>
-          <p style={{ textTransform: "capitalize" }}>{hoje()}</p>
+      <section className="hero">
+        <div className="hero-txt entra">
+          <span className="eyebrow">Centro de comando jurídico</span>
+          <h1>{saudacao()}{primeiroNome ? <>, <span className="grad">{primeiroNome}</span></> : null}.</h1>
+          <p className="data">{hoje()}</p>
+          {relatorio ? (
+            <div className="briefing">
+              <div className="rot"><span className="ia-dot" />Briefing da IA · {fmtDataHora(relatorio.gerado_em).slice(0, 10)}</div>
+              <p>{relatorio.manchete}</p>
+              <Link href="/relatorio">Abrir relatório completo →</Link>
+            </div>
+          ) : (
+            <div className="briefing">
+              <div className="rot"><span className="ia-dot" />Novo no 2.0</div>
+              <p>O {nomeModelo()} pode ler a carteira inteira e montar um relatório executivo com fases, riscos e próximos passos.</p>
+              <Link href="/relatorio">Gerar o primeiro relatório →</Link>
+            </div>
+          )}
+          <div className="hero-acoes">
+            <a href="https://portaldeservicos.pdpj.jus.br/consulta" target="_blank" rel="noopener" className="btn primary" title="Abre o jus.br numa aba nova. Depois de logar, peça ao Claude: /sincronizar-jusbr">
+              Sincronizar com jus.br ↗
+            </a>
+            <SyncButton action={sincronizarTudoAction} />
+          </div>
+          <p className="hint" style={{ marginTop: 8 }}>&quot;Sincronizar com jus.br&quot; abre o portal; depois de logar, peça ao Claude: <code>/sincronizar-jusbr</code>.</p>
         </div>
-        <div className="actions-row" style={{ alignItems: "flex-start" }}>
-          <a
-            href="https://portaldeservicos.pdpj.jus.br/consulta"
-            target="_blank"
-            rel="noopener"
-            className="btn primary"
-            title="Abre o jus.br numa aba nova. Depois de logar, peça ao Claude: /sincronizar-jusbr"
-          >
-            Sincronizar com jus.br
-          </a>
-          <SyncButton action={sincronizarTudoAction} />
-        </div>
-      </div>
-      <p className="hint" style={{ marginTop: -14, marginBottom: 18 }}>
-        &quot;Sincronizar com jus.br&quot; abre o portal numa aba nova — depois de logar, peça ao Claude: <code>/sincronizar-jusbr</code>.
-      </p>
+        <Orbita nucleos={nucleos} nos={nos} />
+      </section>
 
       <StatusAtualizacao log={ultimoLog} />
 
       <div className="stats">
-        <Stat href="/processos" label="Processos ativos" value={processos.length} sub={`${processos.filter((p) => p.origem === "descoberto").length} descobertos automaticamente`} />
-        <Stat href="/documentos" label="CPFs / CNPJs monitorados" value={docs.length} sub={`${docs.filter((d) => d.tipo === "CNPJ").length} empresas · ${docs.filter((d) => d.tipo === "CPF").length} pessoas`} />
+        <Stat href="/processos" label="Processos ativos" value={processos.length} sub={`em ${docs.length} CPFs/CNPJs · ${recentes7.size} com andamento na semana`} />
+        <Link href="/processos" className="stat-link stat">
+          <div className="lbl">Andamentos · 30 dias</div>
+          <div className="val">{ult30}</div>
+          <div className="sub">{semanas[semanas.length - 1].valor} nesta semana</div>
+          <Sparkline valores={semanas.slice(-12).map((s) => s.valor)} />
+        </Link>
         <Stat href="/alertas" label="Alertas pendentes" value={alertas.length} tone={alertas.length ? "alert" : "ok"} sub={`${novosProc} processo(s) novo(s) · ${alertas.length - novosProc} andamento(s)`} />
-        <Stat href="/processos?erro=1" label="Com erro na consulta" value={comErro.length} tone={comErro.length ? "alert" : "ok"} sub={comErro.length ? "veja abaixo" : "todas as fontes responderam"} />
+        <Stat href="/processos" label="Valor das causas" value={brl(valorCausas)} sub={`soma de ${comValor} processo(s) com valor informado`} />
+      </div>
+
+      <div className="grid2">
+        <Card title="Pulso da carteira" hint="andamentos por semana · 26 semanas">
+          <div className="card-pad">
+            <Colunas dados={semanas} altura={200} />
+            <details className="tabela-dados">
+              <summary>Ver os números</summary>
+              <div className="tablewrap">
+                <table><thead><tr><th>Semana</th><th className="right">Andamentos</th></tr></thead>
+                  <tbody>{semanas.map((s) => <tr key={s.rotulo}><td>{s.dica}</td><td className="right">{s.valor}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+        </Card>
+        <Card title="Fase de cada processo" hint={relatorio ? `pela IA · ${fmtDataHora(relatorio.gerado_em).slice(0, 10)}` : undefined} actions={<Link href="/relatorio" className="btn sm">Relatório</Link>}>
+          <div className="card-pad">
+            {relatorio ? (
+              <>
+                <Ranking itens={[...FASES, "indefinida" as const].filter((f) => contFase.get(f)).map((f) => ({ rotulo: FASE_ROTULO[f], valor: contFase.get(f)!, cor: FASE_COR[f] }))} />
+                {semFase > 0 && <p className="hint" style={{ marginTop: 10 }}>{semFase} processo(s) entraram depois do relatório — gere um novo para classificá-los.</p>}
+              </>
+            ) : (
+              <p className="empty">Gere o relatório da IA para ver em que fase está cada processo (início, provas, sentença, recurso, execução, encerrado).</p>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid3">
+        <Card title="Mapa de calor" hint="andamentos por dia · 18 semanas">
+          <div className="card-pad"><MapaCalor dias={dias} /></div>
+        </Card>
+        <Card title="Processos por vínculo">
+          <div className="card-pad">
+            <Ranking itens={[...grupos.values()].filter((g) => g.ativos).sort((a, b) => b.ativos - a.ativos).map((g) => ({ rotulo: g.nome, valor: g.ativos, cor: `var(${corVinc.get(g.id)})`, href: g.id === "_fam" ? undefined : `/documentos/${g.id}` }))} />
+          </div>
+        </Card>
+        <Card title="Perfil da carteira">
+          <div className="card-pad">
+            <div className="hint" style={{ fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", fontSize: 10.5 }}>Por tribunal</div>
+            <Segmentos partes={porTribunal(processos)} />
+            <div className="hint" style={{ fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", fontSize: 10.5, marginTop: 14 }}>Risco avaliado (CPC 25)</div>
+            <Segmentos partes={porRisco(processos)} />
+          </div>
+        </Card>
       </div>
 
       <div className="grid2">
@@ -222,7 +312,8 @@ export default async function Painel() {
                       ) : (
                         <span className="t">{a.titulo}</span>
                       )}
-                      <div className="m">{a.mensagem}</div>
+                      <div className="m">{a.explicacao ?? a.mensagem}</div>
+                      {a.o_que_fazer && <div className="explica fazer">➜ {a.o_que_fazer}</div>}
                       <div className="when">{fmtDataHora(a.created_at)}</div>
                     </div>
                     <form action={marcarLidoAction.bind(null, a.id)}>
@@ -232,20 +323,14 @@ export default async function Painel() {
                 );
                 const cls = a.tipo === "novo_processo" ? "novo" : a.tipo === "erro" ? "erro" : a.tipo === "documento_importado" ? "doc" : "";
                 return a.processo_id ? (
-                  <ItemLink key={a.id} href={`/processos/${a.processo_id}`} className={cls}>
-                    {linha}
-                  </ItemLink>
+                  <ItemLink key={a.id} href={`/processos/${a.processo_id}`} className={cls}>{linha}</ItemLink>
                 ) : (
-                  <li key={a.id} className={cls}>
-                    {linha}
-                  </li>
+                  <li key={a.id} className={cls}>{linha}</li>
                 );
               })}
             </ul>
             {alertas.length > 10 && (
-              <Link href="/alertas" className="hint" style={{ textDecoration: "underline" }}>
-                Ver todos os {alertas.length}
-              </Link>
+              <Link href="/alertas" className="hint" style={{ textDecoration: "underline" }}>Ver todos os {alertas.length}</Link>
             )}
           </div>
         </Card>
@@ -258,11 +343,12 @@ export default async function Painel() {
                 const p = porId.get(m.processo_id);
                 return (
                   <ItemLink key={m.id} href={`/processos/${m.processo_id}`}>
-                    <span className="stripe" style={{ background: "var(--line-strong)" }} />
+                    <span className="stripe" style={{ background: p ? `var(${corVinc.get(grupoDe(p.documento_id))})` : "var(--line-strong)" }} />
                     <div>
                       <Link href={`/processos/${m.processo_id}`} className="t link mono">{p?.numero_formatado ?? m.processo_id}</Link>
                       {p?.descricao && <span className="sub"> · {p.descricao}</span>}
                       <div className="m">{m.descricao}{m.complemento && <span className="hint"> — {m.complemento}</span>}</div>
+                      {m.explicacao && <div className="explica">{m.explicacao}</div>}
                       <div className="when">{fmtDataHora(m.data_hora)}</div>
                     </div>
                     <span />
@@ -300,24 +386,17 @@ export default async function Painel() {
           <table>
             <thead><tr><th>Vínculo</th><th className="right">Ativos</th><th>Último andamento (7 dias)</th><th>Pendente</th></tr></thead>
             <tbody>
-              {[...grupos.values()].filter((g) => g.ativos || g.alertas || g.sub).map((g) =>
-                g.id ? (
-                  <RowLink key={g.nome} href={`/documentos/${g.id}`}>
-                    <td><b>{g.nome}</b>{g.sub && <div className="sub">{g.sub}</div>}</td>
+              {[...grupos.values()].filter((g) => g.ativos || g.alertas || g.id === "_fam").map((g) => {
+                const celulas = (
+                  <>
+                    <td><b style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><i style={{ width: 9, height: 9, borderRadius: 3, background: `var(${corVinc.get(g.id)})` }} />{g.nome}</b>{g.id === "_fam" && <div className="sub">{subFam}</div>}</td>
                     <td className="right">{g.ativos}</td>
                     <td>{g.ultimo ?? <span className="hint">—</span>}</td>
                     <td>{g.alertas ? <Pill tone="accent">{g.alertas} alerta(s)</Pill> : <Pill>em dia</Pill>}</td>
-                  </RowLink>
-                ) : (
-                  <tr key={g.nome}>
-                    <td><b>{g.nome}</b>{g.sub && <div className="sub">{g.sub}</div>}</td>
-                    <td className="right">{g.ativos}</td>
-                    <td>{g.ultimo ?? <span className="hint">—</span>}</td>
-                    <td>{g.alertas ? <Pill tone="accent">{g.alertas} alerta(s)</Pill> : <Pill>em dia</Pill>}</td>
-                  </tr>
-                ),
-              )}
-              {grupos.size === 0 && <tr><td colSpan={4} className="empty">Cadastre um CPF/CNPJ para começar.</td></tr>}
+                  </>
+                );
+                return g.id !== "_fam" ? <RowLink key={g.id} href={`/documentos/${g.id}`}>{celulas}</RowLink> : <tr key={g.id}>{celulas}</tr>;
+              })}
             </tbody>
           </table>
         </div>

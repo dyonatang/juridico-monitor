@@ -1,5 +1,5 @@
 /**
- * Versão 2.0 — explicação dos andamentos e ficha do caso (Claude).
+ * Versão 2.0 — explicação dos andamentos e ficha do caso (Claude Fable 5.2).
  *
  *  - explicarAndamentos: para cada andamento novo, 1-3 frases em português simples dizendo o
  *    que aconteceu, se exige providência e a importância. Roda no fim da atualização de hora
@@ -16,16 +16,22 @@ import { z } from "zod";
 import * as store from "./store";
 import { fmtData, fmtDataHora } from "./format";
 import type { Movimentacao, Processo } from "./types";
+import { FASES, FASE_DESCRICAO } from "./fases";
 
 export const iaDisponivel = () => Boolean(process.env.ANTHROPIC_API_KEY);
-const modelo = () => process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
+export const modelo = () => process.env.ANTHROPIC_MODEL || "claude-fable-5-2";
+/** Nome legível do modelo, para mostrar na tela ("Claude Fable 5.2"). */
+export function nomeModelo(id = modelo()) {
+  const m = id.match(/^claude-([a-z]+)-(\d+)(?:-(\d+))?/);
+  return m ? `Claude ${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}` : id;
+}
 
 /**
  * Chamada estruturada com o modelo de reserva do próprio servidor da Anthropic: se o modelo
  * principal recusar (falso positivo de segurança), a mesma chamada é refeita no modelo
  * indicado pela Anthropic, sem código nosso de nova tentativa.
  */
-async function chamar<T extends z.ZodType>(opts: { schema: T; system: string; usuario: string; effort: "low" | "medium" | "high"; maxTokens: number }): Promise<z.infer<T>> {
+export async function chamar<T extends z.ZodType>(opts: { schema: T; system: string; usuario: string; effort: "low" | "medium" | "high"; maxTokens: number }): Promise<z.infer<T>> {
   const client = new Anthropic({ timeout: 4 * 60 * 1000 });
   const stream = client.beta.messages.stream({
     model: modelo(),
@@ -43,7 +49,7 @@ async function chamar<T extends z.ZodType>(opts: { schema: T; system: string; us
   return resp.parsed_output as z.infer<T>;
 }
 
-const BASE = `Você é o assistente jurídico de um grupo empresarial familiar do Espírito Santo (restaurante Caranguejo do Assis, bufê, holding imobiliária DFV Participações). Quem lê é o dono, empresário sem formação jurídica.
+export const BASE = `Você é o assistente jurídico de um grupo empresarial familiar do Espírito Santo (restaurante Caranguejo do Assis, bufê, holding imobiliária DFV Participações). Quem lê é o dono, empresário sem formação jurídica.
 Regras que não podem ser quebradas:
 - Use SOMENTE os dados fornecidos. Nunca invente o conteúdo de decisões, petições, valores, nomes ou datas que não estejam nos dados.
 - Os andamentos vêm da base pública do CNJ, que traz o NOME do ato (ex.: "Juntada de Petição", "Conclusos para decisão"), quase nunca o conteúdo. Explique o que esse tipo de ato significa e, quando o conteúdo importar e não estiver disponível, diga isso com clareza (ex.: "o texto da petição não aparece aqui — vale abrir no PJe ou pedir à advogada").
@@ -64,7 +70,7 @@ const ExplicacoesSchema = z.object({
 });
 export type Explicacao = z.infer<typeof ExplicacoesSchema>["itens"][number];
 
-function capaTexto(p: Processo) {
+export function capaTexto(p: Processo) {
   return [
     `Processo ${p.numero_formatado}${p.descricao ? ` — ${p.descricao}` : ""}`,
     p.classe && `Classe: ${p.classe}`,
@@ -77,11 +83,11 @@ function capaTexto(p: Processo) {
   ].filter(Boolean).join("\n");
 }
 /** Quem é o "nosso lado": os CPFs/CNPJs cadastrados para monitoramento (dado real, não suposição). */
-async function nossoLado() {
+export async function nossoLado() {
   const docs = await store.listarDocumentos();
   return docs.map((d) => d.apelido ? `${d.apelido} (${d.nome})` : d.nome).join("; ");
 }
-const linhaMov = (m: Movimentacao) => `${fmtDataHora(m.data_hora)} — ${m.descricao}${m.complemento ? ` (${m.complemento})` : ""}`;
+export const linhaMov = (m: Movimentacao) => `${fmtDataHora(m.data_hora)} — ${m.descricao}${m.complemento ? ` (${m.complemento})` : ""}`;
 
 /** Explica os andamentos indicados de UM processo (uma chamada) e grava o resultado. */
 export async function explicarAndamentos(processo: Processo, novos: Movimentacao[]): Promise<number> {
@@ -139,13 +145,17 @@ export async function explicarPendentes(prazoFinal: number, maxProcessos = 8): P
 
 const FichaSchema = z.object({
   situacao_atual: z.string().describe("3 a 6 frases: em que pé está o processo hoje e o que isso significa para o grupo"),
+  fase: z.enum([...FASES, "indefinida"]).describe(FASE_DESCRICAO),
+  fase_motivo: z.string().describe("1 frase: qual dado mostra que o processo está nessa fase"),
   quem_e_quem: z.array(z.object({ nome: z.string(), papel: z.string().describe("ex.: autor (nosso lado), réu, advogado do réu, juízo") })).describe("só pessoas/empresas que aparecem nos dados"),
   ultima_decisao: z.string().nullable().describe("a decisão/despacho mais recente e o que ela determinou, se os dados mostrarem; null se não houver"),
   pendencias: z.array(z.string()).describe("o que está pendente para o processo andar (ex.: citação de alguém, prazo de manifestação, perícia)"),
   proximo_passo: z.string().nullable().describe("o que o grupo pode fazer agora para o processo andar, de forma concreta"),
   limites: z.array(z.string()).describe("o que NÃO dá para saber com estes dados (ex.: conteúdo de decisões que só aparecem pelo nome)"),
 });
-export type Ficha = z.infer<typeof FichaSchema> & { gerada_em: string; modelo: string };
+type FichaIA = z.infer<typeof FichaSchema>;
+/** Fichas geradas antes de 09/11/2026 não têm `fase` — por isso opcional na leitura. */
+export type Ficha = Omit<FichaIA, "fase" | "fase_motivo"> & Partial<Pick<FichaIA, "fase" | "fase_motivo">> & { gerada_em: string; modelo: string };
 
 export async function gerarFicha(processoId: string): Promise<Ficha> {
   const [p, movs, arquivos] = await Promise.all([

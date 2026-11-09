@@ -33,7 +33,7 @@ env:
   - variable: INGEST_TOKEN
     secret: INGEST_TOKEN
   - variable: ANTHROPIC_MODEL
-    value: claude-opus-5-5
+    value: claude-fable-5-2
     availability: [ RUNTIME ]
   - variable: ANTHROPIC_API_KEY
     secret: ANTHROPIC_API_KEY

@@ -11,6 +11,7 @@ import { registrarAuditoria } from "@/lib/auditoria";
 import type { Papel, PontoControvertido, Prazo } from "@/lib/types";
 import { apagarArquivo } from "@/lib/storage";
 import { explicarAndamentos, gerarFicha, iaDisponivel } from "@/lib/explicador";
+import { gerarRelatorio } from "@/lib/relatorio";
 import type { ResultadoProcessoImportado } from "@/lib/types";
 
 export type ActionState = { erro?: string; ok?: string } | undefined;
@@ -299,6 +300,21 @@ export async function explicarRecentesAction(id: string, _: ActionState): Promis
     revalidatePath(`/processos/${id}`);
     tudo();
     return { ok: `${n} andamento(s) explicado(s).` };
+  } catch (e) {
+    return { erro: msg(e) };
+  }
+}
+
+/** Relatório executivo da carteira inteira (Claude Fable 5.2). Leva de 1 a 3 minutos. */
+export async function gerarRelatorioAction(_: ActionState): Promise<ActionState> {
+  try {
+    const eu = await exigirAdmin();
+    if (!iaDisponivel()) return { erro: "Leitura por IA não configurada (ANTHROPIC_API_KEY)." };
+    const r = await gerarRelatorio(eu.login);
+    await registrarAuditoria("gerou_relatorio", { tipo: "relatorio", id: r.id, rotulo: `${r.total_processos} processos` }, eu.login);
+    revalidatePath("/relatorio");
+    revalidatePath("/");
+    return { ok: `Relatório pronto em ${Math.round(r.duracao_ms / 1000)} s.` };
   } catch (e) {
     return { erro: msg(e) };
   }

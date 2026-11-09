@@ -19,7 +19,8 @@ export type AcaoAuditoria =
   | "criou_usuario"
   | "excluiu_usuario"
   | "alterou_usuario"
-  | "redefiniu_senha";
+  | "redefiniu_senha"
+  | "gerou_relatorio";
 
 export type EntradaAuditoria = {
   id: string;

@@ -12,6 +12,7 @@ const ACAO_LABEL: Record<string, string> = {
   abriu_pdf: "Abriu PDF",
   criou_processo: "Cadastrou processo",
   editou_processo: "Editou processo",
+  gerou_relatorio: "Gerou relatório IA",
   excluiu_processo: "Excluiu processo",
   criou_documento: "Cadastrou CPF/CNPJ",
   excluiu_documento: "Excluiu CPF/CNPJ",
