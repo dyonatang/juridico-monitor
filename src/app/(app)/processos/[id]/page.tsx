@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import * as store from "@/lib/store";
 import { fmtData, fmtDataHora } from "@/lib/format";
 import { BackLink, Card, Input, Pill, Select, SubmitButton } from "@/components/ui";
@@ -14,6 +15,7 @@ import {
   sincronizarProcessoAction,
 } from "@/app/actions";
 import { registrarAuditoria } from "@/lib/auditoria";
+import { usuarioAtual } from "@/lib/usuarios";
 import type { PontoControvertido } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -26,10 +28,16 @@ const STATUS_ORDEM: PontoControvertido["status"][] = ["pendente", "favoravel", "
 
 export default async function ProcessoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const p = await store.getProcesso(id);
+  // O id da rota é o próprio número CNJ (id do documento) — dá pra buscar tudo de uma vez,
+  // em vez de 4 idas e voltas seguidas ao banco (São Paulo) a partir do servidor (EUA).
+  const [p, movs, docs, arquivos, eu] = await Promise.all([
+    store.getProcesso(id), store.listarMovimentacoes(id), store.listarDocumentos(), store.listarArquivosDoProcesso(id),
+    usuarioAtual().catch(() => null), // já lido pelo layout (cache da requisição)
+  ]);
   if (!p) notFound();
-  await registrarAuditoria("visualizou_processo", { tipo: "processo", id: p.id, rotulo: p.numero_formatado });
-  const [movs, docs, arquivos] = await Promise.all([store.listarMovimentacoes(p.id), store.listarDocumentos(), store.listarArquivosDoProcesso(p.id)]);
+  // Registro de auditoria depois que a página já foi enviada (não atrasa a abertura).
+  // O login vai pronto: dentro de after() a página não pode mais ler cookies.
+  after(() => registrarAuditoria("visualizou_processo", { tipo: "processo", id: p.id, rotulo: p.numero_formatado }, eu?.login ?? "sistema"));
   const doc = docs.find((d) => d.id === p.documento_id);
 
   const campos: [string, React.ReactNode][] = [

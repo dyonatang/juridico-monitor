@@ -7,9 +7,8 @@ import { alternarUsuarioAction, criarUsuarioAction, excluirUsuarioAction, redefi
 export const dynamic = "force-dynamic";
 
 export default async function Usuarios() {
-  const eu = await usuarioAtual();
+  const [eu, usuarios] = await Promise.all([usuarioAtual(), listarUsuarios()]);
   if (!eu || eu.papel !== "admin") redirect("/");
-  const usuarios = await listarUsuarios();
 
   return (
     <>

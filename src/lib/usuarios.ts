@@ -4,6 +4,7 @@
  * continua valendo como acesso de emergência e é promovido a administrador.
  */
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import * as store from "./store";
 import { COOKIE_SESSAO, credenciaisValidas, validarSessao } from "./auth";
@@ -127,7 +128,8 @@ export async function autenticar(login: string, senha: string): Promise<Usuario 
 }
 
 /** Usuário da sessão atual (server-side). null se não logado. */
-export async function usuarioAtual(): Promise<Usuario | null> {
+/** Memorizado por requisição (React cache): layout, menu, auditoria e página fazem 1 leitura só. */
+export const usuarioAtual = cache(async function usuarioAtual(): Promise<Usuario | null> {
   const login = await validarSessao((await cookies()).get(COOKIE_SESSAO)?.value);
   if (!login) return null;
   const u = await getUsuario(login).catch(() => null);
@@ -137,7 +139,7 @@ export async function usuarioAtual(): Promise<Usuario | null> {
     return { id: login, login, nome: login, papel: "admin", senha_hash: null, ativo: true, ultimo_acesso: null, created_at: "" };
   }
   return null;
-}
+});
 
 export async function exigirAdmin(): Promise<Usuario> {
   const u = await usuarioAtual();

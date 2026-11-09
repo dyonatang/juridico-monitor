@@ -196,3 +196,12 @@ td .sub, .sub { font-size: 12px; color: var(--ink-2); }
   transition: background .12s, border-color .12s;
 }
 .back-link:hover { background: var(--surface-2); border-color: var(--accent); color: var(--accent); }
+
+/* Esqueleto de carregamento (src/app/(app)/loading.tsx) */
+.carregando .esq { background: var(--line); border-radius: 6px; margin-bottom: 14px; animation: esq-pulso 1.1s ease-in-out infinite alternate; }
+.carregando .esq-titulo { width: 220px; height: 34px; }
+.carregando .esq-sub { width: 320px; height: 16px; margin-bottom: 28px; }
+.carregando .esq-bloco { width: 100%; height: 140px; border-radius: 8px; }
+@keyframes esq-pulso { from { opacity: .45; } to { opacity: .9; } }
+@media (prefers-reduced-motion: reduce) { .carregando .esq { animation: none; opacity: .6; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

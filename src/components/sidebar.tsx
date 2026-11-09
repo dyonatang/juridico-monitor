@@ -6,14 +6,12 @@ import { logoutAction } from "@/app/auth-actions";
 import { NavLinks } from "./nav-links";
 
 export async function Sidebar() {
-  let pendentes = 0;
-  let log: Awaited<ReturnType<typeof store.ultimoSyncLog>> = null;
-  try {
-    [pendentes, log] = await Promise.all([store.contarAlertasNaoLidos(), store.ultimoSyncLog()]);
-  } catch {
-    // sem credenciais do Firebase ainda — a página principal mostra o erro
-  }
-  const usuario = await usuarioAtual().catch(() => null);
+  // As três leituras em paralelo (antes o usuário era lido depois das outras duas).
+  const [contagens, usuario] = await Promise.all([
+    Promise.all([store.contarAlertasNaoLidos(), store.ultimoSyncLog()]).catch(() => null), // sem credenciais: a página mostra o erro
+    usuarioAtual().catch(() => null),
+  ]);
+  const [pendentes, log] = contagens ?? [0, null];
 
   return (
     <aside className="side">

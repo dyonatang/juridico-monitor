@@ -1,20 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 import * as store from "@/lib/store";
 import { formatarDocumento, mascararDocumento, fmtDataHora } from "@/lib/format";
 import { BackLink, Card, Pill } from "@/components/ui";
 import { ProcessosTable } from "@/components/processos-table";
 import { DocumentoToggle } from "@/components/documento-toggle";
 import { registrarAuditoria } from "@/lib/auditoria";
+import { usuarioAtual } from "@/lib/usuarios";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const d = await store.getDocumento(id);
+  const [d, processos, todos, eu] = await Promise.all([store.getDocumento(id), store.listarProcessos({ documento_id: id }), store.listarDocumentos(), usuarioAtual().catch(() => null)]);
   if (!d) notFound();
-  await registrarAuditoria("visualizou_documento", { tipo: "documento", id: d.id, rotulo: d.apelido || d.nome });
-  const [processos, todos] = await Promise.all([store.listarProcessos({ documento_id: id }), store.listarDocumentos()]);
+  after(() => registrarAuditoria("visualizou_documento", { tipo: "documento", id: d.id, rotulo: d.apelido || d.nome }, eu?.login ?? "sistema")); // login pronto: after() não lê cookies
   const vinculo = d.vinculo_id ? todos.find((x) => x.id === d.vinculo_id) : null;
   const vinculados = todos.filter((x) => x.vinculo_id === id);
 

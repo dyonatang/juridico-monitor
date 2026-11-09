@@ -24,9 +24,8 @@ const ACAO_LABEL: Record<string, string> = {
 };
 
 export default async function Auditoria() {
-  const eu = await usuarioAtual();
+  const [eu, entradas] = await Promise.all([usuarioAtual(), listarAuditoria(300)]);
   if (!eu || eu.papel !== "admin") redirect("/");
-  const entradas = await listarAuditoria(300);
 
   return (
     <>
