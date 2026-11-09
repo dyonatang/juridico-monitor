@@ -125,7 +125,8 @@ export async function importarPdf(input: {
     const patch: Record<string, unknown> = {};
     if (!atual.polo_ativo && poloAtivoIa) patch.polo_ativo = poloAtivoIa;
     if (!atual.polo_passivo && poloPassivoIa) patch.polo_passivo = poloPassivoIa;
-    const descricaoGenerica = !atual.descricao || atual.descricao.startsWith("Importado de ") || (!!partesResumo && !atual.descricao.includes(" x "));
+    // Só troca descrição vazia ou automática; a escrita à mão (ex.: "Imóvel Linhares — AV-8...") fica.
+    const descricaoGenerica = !atual.descricao || atual.descricao.startsWith("Importado de ");
     if (descricaoGenerica && analise) patch.descricao = descricaoBase.slice(0, 160);
     if (!atual.resumo_status && resumoStatusIa) patch.resumo_status = resumoStatusIa;
     if (Object.keys(patch).length) await store.atualizar("processos", numeroCnj, patch);
