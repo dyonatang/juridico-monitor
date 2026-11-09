@@ -46,11 +46,18 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   const quando = log.finalizado_em ?? log.iniciado_em;
   const semRodadaH = (Date.now() - new Date(log.iniciado_em).getTime()) / 3_600_000;
 
+  // Sobrecarga do DataJud (429/504/resposta parcial/sem tempo) é passageira: em 14 dias até
+  // 09/11/2026 o TJES recusou a consulta em 19% das rodadas, e 25 de 40 vezes voltou na hora
+  // seguinte. Isso não é defeito do sistema — fica amarelo; vermelho só para o que pede ação.
+  const passageiro = (e: string) => /tentar de novo mais tarde|sem tempo para consultar nesta rodada/.test(e);
+  const soOscilacao = erros.length > 0 && erros.every(passageiro);
+
   let tom = "";
   let icone = "✅";
   let titulo = "Última atualização concluída sem erros";
   if (emAndamento) { tom = "warn"; icone = "🔄"; titulo = "Atualização em andamento"; }
   else if (interrompida) { tom = "bad"; icone = "⛔"; titulo = "A última atualização foi interrompida antes de terminar"; }
+  else if (soOscilacao) { tom = "warn"; icone = "🟡"; titulo = "Fonte do CNJ sobrecarregada nesta rodada — o restante fica para a próxima hora"; }
   else if (erros.length) { tom = "bad"; icone = "⚠️"; titulo = `Última atualização terminou com ${erros.length} erro(s)`; }
   else if (pendentes) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
   if (!emAndamento && atrasados.length) { tom = "bad"; icone = "⚠️"; titulo = `${atrasados.length} processo(s) sem verificação há mais de 6 horas`; }
@@ -67,6 +74,12 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
           <div className="linha">
             {log.processos_verificados} processo(s) verificado(s) · {log.novas_movimentacoes} andamento(s) novo(s) · {erros.length} erro(s)
             {pendentes > 0 && ` · ${pendentes} ficaram pra próxima rodada (a fonte estava lenta)`}
+          </div>
+        )}
+        {soOscilacao && !atrasados.length && !emAndamento && (
+          <div className="linha">
+            Normal: o CNJ recusa consultas em cerca de 1 a cada 5 rodadas e volta sozinho. Nada é perdido — os
+            andamentos desse intervalo entram na próxima verificação. Só preocupa se aparecer o aviso de 6 horas.
           </div>
         )}
         {interrompida && (
