@@ -70,18 +70,64 @@ const desc = <T extends { created_at?: string }>(a: T, b: T) => (b.created_at ??
 const descPor = <T extends { created_at?: string }>(campo: keyof T) => (a: T, b: T) =>
   String((b[campo] as unknown as string) ?? b.created_at ?? "").localeCompare(String((a[campo] as unknown as string) ?? a.created_at ?? ""));
 
+// ------------------------------------------------------------- Memória curta de leitura
+/**
+ * O servidor (App Hosting, us-central1 — São Paulo não é oferecido) fica longe do Firestore
+ * (southamerica-east1): medido em 09/11/2026, cada consulta custa ~150 ms. Navegar entre as
+ * telas relê quase sempre as mesmas listas, então elas ficam guardadas por alguns segundos.
+ * Qualquer gravação feita por este servidor limpa tudo na hora (`limparCache`), e a geração
+ * impede que uma leitura iniciada antes da gravação guarde o dado velho.
+ * Com 2 instâncias, a outra pode mostrar o dado anterior por até MEMORIA_MS.
+ */
+const MEMORIA_MS = 30_000;
+const memoria = new Map<string, { ate: number; valor: Promise<unknown> }>();
+let geracao = 0;
+export const geracaoAtual = () => geracao;
+export function limparCache() {
+  geracao++;
+  memoria.clear();
+}
+async function lembrar<T>(chave: string, ler: () => Promise<T>): Promise<T> {
+  const agoraMs = Date.now();
+  const achado = memoria.get(chave);
+  if (achado && achado.ate > agoraMs) return structuredClone((await achado.valor) as T); // cópia: quem recebe pode ordenar/alterar
+  const minhaGeracao = geracao;
+  const valor = ler();
+  memoria.set(chave, { ate: agoraMs + MEMORIA_MS, valor });
+  try {
+    const v = await valor;
+    if (geracao !== minhaGeracao && memoria.get(chave)?.valor === valor) memoria.delete(chave); // gravação no meio: não guarda
+    return structuredClone(v);
+  } catch (e) {
+    if (memoria.get(chave)?.valor === valor) memoria.delete(chave);
+    throw e;
+  }
+}
+/** Executa uma gravação e invalida a memória de leitura. */
+async function gravando<T>(f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } finally {
+    limparCache();
+  }
+}
+
 /** Remove chaves undefined (Firestore rejeita undefined). */
 const limpar = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
 // ------------------------------------------------------------- Documentos
-export async function listarDocumentos(apenasAtivos = false): Promise<DocumentoMonitorado[]> {
-  let q: Query = fs().collection("documentos");
-  if (apenasAtivos) q = q.where("ativo", "==", true);
-  return (await all<DocumentoMonitorado>(q)).sort(desc);
+export function listarDocumentos(apenasAtivos = false): Promise<DocumentoMonitorado[]> {
+  return lembrar(`documentos:${apenasAtivos}`, async () => {
+    let q: Query = fs().collection("documentos");
+    if (apenasAtivos) q = q.where("ativo", "==", true);
+    return (await all<DocumentoMonitorado>(q)).sort(desc);
+  });
 }
-export async function getDocumento(id: string) {
-  const d = await fs().collection("documentos").doc(id).get();
-  return d.exists ? toObj<DocumentoMonitorado>(d) : null;
+export function getDocumento(id: string) {
+  return lembrar(`documento:${id}`, async () => {
+    const d = await fs().collection("documentos").doc(id).get();
+    return d.exists ? toObj<DocumentoMonitorado>(d) : null;
+  });
 }
 export async function getDocumentoPorTracking(trackingId: string) {
   const r = await fs().collection("documentos").where("provider_tracking_id", "==", trackingId).limit(1).get();
@@ -90,32 +136,38 @@ export async function getDocumentoPorTracking(trackingId: string) {
 export async function criarDocumento(
   data: Omit<DocumentoMonitorado, "id" | "created_at" | "ativo" | "provider" | "provider_tracking_id" | "ultimo_check" | "ultimo_erro">,
 ): Promise<DocumentoMonitorado> {
-  const ref = fs().collection("documentos").doc(data.numero);
-  if ((await ref.get()).exists) throw new Error("Este documento já está cadastrado");
-  const doc: DocumentoMonitorado = {
-    id: ref.id,
-    ...data,
-    ativo: true,
-    provider: null,
-    provider_tracking_id: null,
-    ultimo_check: null,
-    ultimo_erro: null,
-    created_at: agora(),
-  };
-  await ref.set(limpar({ ...doc, id: undefined }));
-  return doc;
+  return gravando(async () => {
+    const ref = fs().collection("documentos").doc(data.numero);
+    if ((await ref.get()).exists) throw new Error("Este documento já está cadastrado");
+    const doc: DocumentoMonitorado = {
+      id: ref.id,
+      ...data,
+      ativo: true,
+      provider: null,
+      provider_tracking_id: null,
+      ultimo_check: null,
+      ultimo_erro: null,
+      created_at: agora(),
+    };
+    await ref.set(limpar({ ...doc, id: undefined }));
+    return doc;
+  });
 }
 
 // -------------------------------------------------------------- Processos
-export async function listarProcessos(f: { documento_id?: string; apenasAtivos?: boolean } = {}): Promise<Processo[]> {
-  let q: Query = fs().collection("processos");
-  if (f.documento_id) q = q.where("documento_id", "==", f.documento_id);
-  if (f.apenasAtivos) q = q.where("ativo", "==", true);
-  return (await all<Processo>(q)).sort(descPor("ultima_movimentacao_em"));
+export function listarProcessos(f: { documento_id?: string; apenasAtivos?: boolean } = {}): Promise<Processo[]> {
+  return lembrar(`processos:${f.documento_id ?? ""}:${!!f.apenasAtivos}`, async () => {
+    let q: Query = fs().collection("processos");
+    if (f.documento_id) q = q.where("documento_id", "==", f.documento_id);
+    if (f.apenasAtivos) q = q.where("ativo", "==", true);
+    return (await all<Processo>(q)).sort(descPor("ultima_movimentacao_em"));
+  });
 }
-export async function getProcesso(id: string) {
-  const d = await fs().collection("processos").doc(id).get();
-  return d.exists ? toObj<Processo>(d) : null;
+export function getProcesso(id: string) {
+  return lembrar(`processo:${id}`, async () => {
+    const d = await fs().collection("processos").doc(id).get();
+    return d.exists ? toObj<Processo>(d) : null;
+  });
 }
 export const getProcessoPorNumero = (numeroDigits: string) => getProcesso(numeroDigits);
 export async function getProcessoPorTracking(trackingId: string) {
@@ -123,25 +175,27 @@ export async function getProcessoPorTracking(trackingId: string) {
   return r.empty ? null : toObj<Processo>(r.docs[0]);
 }
 export async function criarProcesso(data: Omit<Processo, "id" | "created_at" | "ativo" | "ultimo_check" | "ultimo_erro" | "total_movimentacoes" | "ultima_movimentacao_em" | "resumo_status" | "classificacao_risco" | "valor_provisionado" | "pontos_controvertidos" | "proximos_prazos" | "aviso_fonte">): Promise<Processo> {
-  const ref = fs().collection("processos").doc(data.numero_cnj);
-  if ((await ref.get()).exists) throw new Error("Este processo já está cadastrado");
-  const p: Processo = {
-    id: ref.id,
-    ...data,
-    ativo: true,
-    ultimo_check: null,
-    ultimo_erro: null,
-    total_movimentacoes: 0,
-    ultima_movimentacao_em: null,
-    resumo_status: null,
-    classificacao_risco: null,
-    valor_provisionado: null,
-    pontos_controvertidos: null,
-    proximos_prazos: null,
-    created_at: agora(),
-  };
-  await ref.set(limpar({ ...p, id: undefined }));
-  return p;
+  return gravando(async () => {
+    const ref = fs().collection("processos").doc(data.numero_cnj);
+    if ((await ref.get()).exists) throw new Error("Este processo já está cadastrado");
+    const p: Processo = {
+      id: ref.id,
+      ...data,
+      ativo: true,
+      ultimo_check: null,
+      ultimo_erro: null,
+      total_movimentacoes: 0,
+      ultima_movimentacao_em: null,
+      resumo_status: null,
+      classificacao_risco: null,
+      valor_provisionado: null,
+      pontos_controvertidos: null,
+      proximos_prazos: null,
+      created_at: agora(),
+    };
+    await ref.set(limpar({ ...p, id: undefined }));
+    return p;
+  });
 }
 export type PrazoComProcesso = { prazo: Processo["proximos_prazos"] extends (infer T)[] | null ? T : never; processo: Processo };
 /** Prazos/audiências futuros de todos os processos ativos, ordenados por data (mais próximo primeiro). */
@@ -167,31 +221,35 @@ export async function contarDocumentosAtivos() {
 // ---------------------------------------------------------- Atualização / exclusão genéricas
 export type Colecao = "documentos" | "processos";
 export async function atualizar(col: Colecao | "alertas", id: string, patch: Record<string, unknown>) {
-  await fs().collection(col).doc(id).update(limpar(patch));
+  return gravando(async () => {
+    await fs().collection(col).doc(id).update(limpar(patch));
+  });
 }
 export async function excluir(col: Colecao, id: string) {
-  const db = fs();
-  const batch = db.batch();
-  if (col === "processos") {
-    for (const c of ["movimentacoes", "alertas"]) {
-      const r = await db.collection(c).where("processo_id", "==", id).get();
-      r.docs.forEach((d) => batch.delete(d.ref));
+  return gravando(async () => {
+    const db = fs();
+    const batch = db.batch();
+    if (col === "processos") {
+      for (const c of ["movimentacoes", "alertas"]) {
+        const r = await db.collection(c).where("processo_id", "==", id).get();
+        r.docs.forEach((d) => batch.delete(d.ref));
+      }
+    } else {
+      const rProc = await db.collection("processos").where("documento_id", "==", id).get();
+      rProc.docs.forEach((d) => batch.update(d.ref, { documento_id: null }));
+      const rVinculados = await db.collection("documentos").where("vinculo_id", "==", id).get();
+      rVinculados.docs.forEach((d) => batch.update(d.ref, { vinculo_id: null }));
+      const rAlertas = await db.collection("alertas").where("documento_id", "==", id).get();
+      rAlertas.docs.forEach((d) => batch.delete(d.ref));
     }
-  } else {
-    const rProc = await db.collection("processos").where("documento_id", "==", id).get();
-    rProc.docs.forEach((d) => batch.update(d.ref, { documento_id: null }));
-    const rVinculados = await db.collection("documentos").where("vinculo_id", "==", id).get();
-    rVinculados.docs.forEach((d) => batch.update(d.ref, { vinculo_id: null }));
-    const rAlertas = await db.collection("alertas").where("documento_id", "==", id).get();
-    rAlertas.docs.forEach((d) => batch.delete(d.ref));
-  }
-  batch.delete(db.collection(col).doc(id));
-  await batch.commit();
+    batch.delete(db.collection(col).doc(id));
+    await batch.commit();
+  });
 }
 
 // ---------------------------------------------------------- Movimentações
 export async function listarMovimentacoes(processoId: string, limite?: number): Promise<Movimentacao[]> {
-  const todas = await all<Movimentacao>(fs().collection("movimentacoes").where("processo_id", "==", processoId));
+  const todas = await lembrar(`movs:${processoId}`, () => all<Movimentacao>(fs().collection("movimentacoes").where("processo_id", "==", processoId)));
   // Esconde duplicatas antigas (gravadas antes da correção do prefixo de grau): fica a 1ª gravada.
   todas.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
   const vistas = new Set<string>();
@@ -213,67 +271,80 @@ export async function inserirMovimentacoes(
   processoId: string,
   movs: Omit<Movimentacao, "id" | "processo_id" | "created_at">[],
 ): Promise<Movimentacao[]> {
-  if (movs.length === 0) return [];
-  const db = fs();
-  const out: Movimentacao[] = [];
-  const ts = agora();
-  // lotes de 400 (limite do batch é 500)
-  for (let i = 0; i < movs.length; i += 400) {
-    const batch = db.batch();
-    for (const m of movs.slice(i, i + 400)) {
-      const id = `${processoId}_${m.hash}`;
-      const mov: Movimentacao = { id, processo_id: processoId, ...m, created_at: ts };
-      batch.set(db.collection("movimentacoes").doc(id), limpar({ ...mov, id: undefined }));
-      out.push(mov);
+  return gravando(async () => {
+    if (movs.length === 0) return [];
+    const db = fs();
+    const out: Movimentacao[] = [];
+    const ts = agora();
+    // lotes de 400 (limite do batch é 500)
+    for (let i = 0; i < movs.length; i += 400) {
+      const batch = db.batch();
+      for (const m of movs.slice(i, i + 400)) {
+        const id = `${processoId}_${m.hash}`;
+        const mov: Movimentacao = { id, processo_id: processoId, ...m, created_at: ts };
+        batch.set(db.collection("movimentacoes").doc(id), limpar({ ...mov, id: undefined }));
+        out.push(mov);
+      }
+      await batch.commit();
     }
-    await batch.commit();
-  }
-  return out;
+    return out;
+  });
 }
-export async function movimentacoesRecentes(desdeISO: string, limite = 300): Promise<Movimentacao[]> {
-  return all<Movimentacao>(fs().collection("movimentacoes").where("created_at", ">=", desdeISO).orderBy("created_at", "desc").limit(limite));
+export function movimentacoesRecentes(desdeISO: string, limite = 300): Promise<Movimentacao[]> {
+  const desde = desdeISO.slice(0, 16); // arredonda ao minuto para a memória ser reaproveitada (inclui até 1 min a mais)
+  return lembrar(`recentes:${desde}:${limite}`, () =>
+    all<Movimentacao>(fs().collection("movimentacoes").where("created_at", ">=", desde).orderBy("created_at", "desc").limit(limite)),
+  );
 }
 
 // ---------------------------------------------------------------- Alertas
-export async function listarAlertas(f: { apenasNaoLidos?: boolean; limite?: number } = {}): Promise<Alerta[]> {
-  let q: Query = fs().collection("alertas");
-  if (f.apenasNaoLidos) q = q.where("lido", "==", false);
-  const r = (await all<Alerta>(q)).sort(desc);
-  return f.limite ? r.slice(0, f.limite) : r;
+export function listarAlertas(f: { apenasNaoLidos?: boolean; limite?: number } = {}): Promise<Alerta[]> {
+  return lembrar(`alertas:${!!f.apenasNaoLidos}:${f.limite ?? ""}`, async () => {
+    let q: Query = fs().collection("alertas");
+    if (f.apenasNaoLidos) q = q.where("lido", "==", false);
+    const r = (await all<Alerta>(q)).sort(desc);
+    return f.limite ? r.slice(0, f.limite) : r;
+  });
 }
-export async function contarAlertasNaoLidos() {
-  return (await fs().collection("alertas").where("lido", "==", false).count().get()).data().count;
+export function contarAlertasNaoLidos() {
+  return lembrar("alertas:contagem", async () => (await fs().collection("alertas").where("lido", "==", false).count().get()).data().count);
 }
 export async function inserirAlertas(alertas: Omit<Alerta, "id" | "created_at" | "lido" | "notificado_em">[]) {
-  if (alertas.length === 0) return;
-  const db = fs();
-  const batch = db.batch();
-  const ts = agora();
-  for (const a of alertas) {
-    batch.set(db.collection("alertas").doc(), limpar({ ...a, lido: false, notificado_em: null, created_at: ts }));
-  }
-  await batch.commit();
+  return gravando(async () => {
+    if (alertas.length === 0) return;
+    const db = fs();
+    const batch = db.batch();
+    const ts = agora();
+    for (const a of alertas) {
+      batch.set(db.collection("alertas").doc(), limpar({ ...a, lido: false, notificado_em: null, created_at: ts }));
+    }
+    await batch.commit();
+  });
 }
 export async function marcarAlertasLidos(ids?: string[]): Promise<number> {
-  const db = fs();
-  const refs = ids?.length
-    ? ids.map((id) => db.collection("alertas").doc(id))
-    : (await db.collection("alertas").where("lido", "==", false).get()).docs.map((d) => d.ref);
-  const batch = db.batch();
-  refs.forEach((r) => batch.update(r, { lido: true }));
-  await batch.commit();
-  return refs.length;
+  return gravando(async () => {
+    const db = fs();
+    const refs = ids?.length
+      ? ids.map((id) => db.collection("alertas").doc(id))
+      : (await db.collection("alertas").where("lido", "==", false).get()).docs.map((d) => d.ref);
+    const batch = db.batch();
+    refs.forEach((r) => batch.update(r, { lido: true }));
+    await batch.commit();
+    return refs.length;
+  });
 }
 export async function alertasNaoNotificados(limite = 200): Promise<Alerta[]> {
   const r = await all<Alerta>(fs().collection("alertas").where("notificado_em", "==", null));
   return r.sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(0, limite);
 }
 export async function marcarNotificados(ids: string[]) {
-  const db = fs();
-  const batch = db.batch();
-  const ts = agora();
-  ids.forEach((id) => batch.update(db.collection("alertas").doc(id), { notificado_em: ts }));
-  await batch.commit();
+  return gravando(async () => {
+    const db = fs();
+    const batch = db.batch();
+    const ts = agora();
+    ids.forEach((id) => batch.update(db.collection("alertas").doc(id), { notificado_em: ts }));
+    await batch.commit();
+  });
 }
 
 // --------------------------------------------------------------- Sync log
@@ -287,32 +358,44 @@ export type SyncLog = {
   detalhes: unknown;
 };
 export async function iniciarSyncLog(): Promise<string> {
-  const ref = fs().collection("sync_log").doc();
-  await ref.set({ iniciado_em: agora(), finalizado_em: null, processos_verificados: 0, novas_movimentacoes: 0, erros: 0, detalhes: null });
-  return ref.id;
+  return gravando(async () => {
+    const ref = fs().collection("sync_log").doc();
+    await ref.set({ iniciado_em: agora(), finalizado_em: null, processos_verificados: 0, novas_movimentacoes: 0, erros: 0, detalhes: null });
+    return ref.id;
+  });
 }
 export async function finalizarSyncLog(id: string, patch: Partial<SyncLog>) {
-  await fs().collection("sync_log").doc(id).update(limpar({ ...patch, finalizado_em: agora() }));
+  return gravando(async () => {
+    await fs().collection("sync_log").doc(id).update(limpar({ ...patch, finalizado_em: agora() }));
+  });
 }
-export async function ultimoSyncLog(): Promise<SyncLog | null> {
-  const r = await fs().collection("sync_log").orderBy("iniciado_em", "desc").limit(1).get();
-  return r.empty ? null : toObj<SyncLog>(r.docs[0]);
+export function ultimoSyncLog(): Promise<SyncLog | null> {
+  return lembrar("sync:ultimo", async () => {
+    const r = await fs().collection("sync_log").orderBy("iniciado_em", "desc").limit(1).get();
+    return r.empty ? null : toObj<SyncLog>(r.docs[0]);
+  });
 }
 
 // --------------------------------------------------------------- Arquivos (PDFs importados)
 export async function salvarArquivo(a: Arquivo) {
-  await fs().collection("arquivos").doc(a.id).set(limpar({ ...a, id: undefined }));
+  return gravando(async () => {
+    await fs().collection("arquivos").doc(a.id).set(limpar({ ...a, id: undefined }));
+  });
 }
 export async function getArquivo(id: string) {
   const d = await fs().collection("arquivos").doc(id).get();
   return d.exists ? toObj<Arquivo>(d) : null;
 }
-export async function listarArquivos(limite = 50): Promise<Arquivo[]> {
-  return all<Arquivo>(fs().collection("arquivos").orderBy("created_at", "desc").limit(limite));
+export function listarArquivos(limite = 50): Promise<Arquivo[]> {
+  return lembrar(`arquivos:${limite}`, () => all<Arquivo>(fs().collection("arquivos").orderBy("created_at", "desc").limit(limite)));
 }
-export async function listarArquivosDoProcesso(numeroCnj: string): Promise<Arquivo[]> {
-  return (await all<Arquivo>(fs().collection("arquivos").where("processos", "array-contains", numeroCnj))).sort(desc);
+export function listarArquivosDoProcesso(numeroCnj: string): Promise<Arquivo[]> {
+  return lembrar(`arquivos-proc:${numeroCnj}`, async () =>
+    (await all<Arquivo>(fs().collection("arquivos").where("processos", "array-contains", numeroCnj))).sort(desc),
+  );
 }
 export async function excluirArquivo(id: string) {
-  await fs().collection("arquivos").doc(id).delete();
+  return gravando(async () => {
+    await fs().collection("arquivos").doc(id).delete();
+  });
 }

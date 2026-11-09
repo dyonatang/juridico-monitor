@@ -29,9 +29,18 @@ export async function listarUsuarios(): Promise<Usuario[]> {
   const r = await store.fs().collection("usuarios").get();
   return r.docs.map((d) => ({ id: d.id, ...(d.data() as object) }) as Usuario).sort((a, b) => a.nome.localeCompare(b.nome));
 }
+// Lido em toda navegação (sessão): guardado 30 s, como as listas do store. As gravações de
+// usuário abaixo chamam store.limparCache(), então desativar/alterar vale na hora nesta instância.
+const usuariosLidos = new Map<string, { ate: number; u: Usuario | null; geracao: number }>();
 export async function getUsuario(login: string): Promise<Usuario | null> {
-  const d = await store.fs().collection("usuarios").doc(normalizarLogin(login)).get();
-  return d.exists ? ({ id: d.id, ...(d.data() as object) } as Usuario) : null;
+  const id = normalizarLogin(login);
+  const achado = usuariosLidos.get(id);
+  if (achado && achado.ate > Date.now() && achado.geracao === store.geracaoAtual()) return achado.u && structuredClone(achado.u);
+  const geracao = store.geracaoAtual();
+  const d = await store.fs().collection("usuarios").doc(id).get();
+  const u = d.exists ? ({ id: d.id, ...(d.data() as object) } as Usuario) : null;
+  if (geracao === store.geracaoAtual()) usuariosLidos.set(id, { ate: Date.now() + 30_000, u, geracao });
+  return u && structuredClone(u);
 }
 
 export async function criarUsuario(input: { nome: string; login: string; senha: string; papel: Papel }): Promise<Usuario> {
@@ -45,6 +54,7 @@ export async function criarUsuario(input: { nome: string; login: string; senha: 
   const u: Usuario = { id: login, login, nome, papel: input.papel, senha_hash: hashSenha(input.senha), ativo: true, ultimo_acesso: null, created_at: store.agora() };
   const { id: _id, ...dados } = u;
   await ref.set(dados);
+  store.limparCache();
   return u;
 }
 
@@ -56,10 +66,12 @@ export async function atualizarUsuario(login: string, patch: Partial<Pick<Usuari
     dados.senha_hash = hashSenha(senha);
   }
   await store.fs().collection("usuarios").doc(normalizarLogin(login)).update(dados);
+  store.limparCache();
 }
 
 export async function excluirUsuario(login: string) {
   await store.fs().collection("usuarios").doc(normalizarLogin(login)).delete();
+  store.limparCache();
 }
 
 export async function contarAdmins() {
