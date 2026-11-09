@@ -37,6 +37,8 @@ export default async function Alertas({ searchParams }: { searchParams: Promise<
                     </Pill>{" "}
                     {a.processo_id ? <Link href={`/processos/${a.processo_id}`} className="t link">{a.titulo}</Link> : <span className="t">{a.titulo}</span>}
                     <div className="m">{a.mensagem}</div>
+                    {a.explicacao && <div className="explica">{a.explicacao}</div>}
+                    {a.o_que_fazer && <div className="explica fazer">➜ {a.o_que_fazer}</div>}
                     <div className="when">{fmtDataHora(a.created_at)}{a.notificado_em && " · notificado"}</div>
                   </div>
                   {!a.lido ? <form action={marcarLidoAction.bind(null, a.id)}><SubmitButton tone="sm">✓ Lido</SubmitButton></form> : <span />}

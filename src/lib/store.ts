@@ -163,13 +163,15 @@ export function listarProcessos(f: { documento_id?: string; apenasAtivos?: boole
     return (await all<Processo>(q)).sort(descPor("ultima_movimentacao_em"));
   });
 }
-export function getProcesso(id: string) {
-  return lembrar(`processo:${id}`, async () => {
+/** `fresco`: ignora a memória — use antes de ler-alterar-gravar (ex.: listas de prazos). */
+export function getProcesso(id: string, opts: { fresco?: boolean } = {}) {
+  const ler = async () => {
     const d = await fs().collection("processos").doc(id).get();
     return d.exists ? toObj<Processo>(d) : null;
-  });
+  };
+  return opts.fresco ? ler() : lembrar(`processo:${id}`, ler);
 }
-export const getProcessoPorNumero = (numeroDigits: string) => getProcesso(numeroDigits);
+export const getProcessoPorNumero = (numeroDigits: string) => getProcesso(numeroDigits, { fresco: true });
 export async function getProcessoPorTracking(trackingId: string) {
   const r = await fs().collection("processos").where("provider_tracking_id", "==", trackingId).limit(1).get();
   return r.empty ? null : toObj<Processo>(r.docs[0]);
@@ -288,6 +290,32 @@ export async function inserirMovimentacoes(
       await batch.commit();
     }
     return out;
+  });
+}
+/** Andamentos gravados desde `desdeISO` que ainda não têm explicação (v2.0). Sem memória. */
+export async function movimentacoesSemExplicacao(desdeISO: string): Promise<Movimentacao[]> {
+  const r = await all<Movimentacao>(fs().collection("movimentacoes").where("created_at", ">=", desdeISO).orderBy("created_at", "desc").limit(500));
+  return r.filter((m) => !m.explicado_em);
+}
+/** Grava as explicações nos andamentos e repete o texto nos alertas desses andamentos. */
+export async function salvarExplicacoes(itens: { id: string; explicacao: string; o_que_fazer: string | null; importancia: "alta" | "media" | "baixa" }[]) {
+  if (!itens.length) return;
+  return gravando(async () => {
+    const db = fs();
+    const ts = agora();
+    const batch = db.batch();
+    for (const i of itens) {
+      batch.update(db.collection("movimentacoes").doc(i.id), { explicacao: i.explicacao, o_que_fazer: i.o_que_fazer, importancia: i.importancia, explicado_em: ts });
+    }
+    for (let k = 0; k < itens.length; k += 30) {
+      const fatia = itens.slice(k, k + 30);
+      const alertas = await db.collection("alertas").where("movimentacao_id", "in", fatia.map((i) => i.id)).get();
+      for (const a of alertas.docs) {
+        const i = fatia.find((x) => x.id === a.get("movimentacao_id"))!;
+        batch.update(a.ref, { explicacao: i.explicacao, o_que_fazer: i.o_que_fazer, importancia: i.importancia });
+      }
+    }
+    await batch.commit();
   });
 }
 export function movimentacoesRecentes(desdeISO: string, limite = 300): Promise<Movimentacao[]> {

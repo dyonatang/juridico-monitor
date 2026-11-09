@@ -74,18 +74,21 @@ export function ActionForm({
   children,
   submitLabel,
   hint,
+  tone,
 }: {
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   submitLabel: string;
   hint?: string;
+  /** Com `tone` e sem campos, vira um botão compacto (ex.: no cabeçalho de um cartão). */
+  tone?: "primary" | "secondary" | "sm";
 }) {
   const [state, formAction] = useActionState(action, undefined);
   return (
-    <form action={formAction} className="form">
+    <form action={formAction} className={children ? "form" : "form-botao"}>
       {children}
       <div className="actions">
-        <SubmitButton>{submitLabel}</SubmitButton>
+        <SubmitButton tone={tone}>{submitLabel}</SubmitButton>
         {state?.erro ? <span className="msg-err">{state.erro}</span> : state?.ok ? <span className="msg-ok">{state.ok}</span> : hint && <span className="hint">{hint}</span>}
       </div>
     </form>

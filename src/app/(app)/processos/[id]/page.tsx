@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { after } from "next/server";
 import * as store from "@/lib/store";
 import { fmtData, fmtDataHora } from "@/lib/format";
-import { BackLink, Card, Input, Pill, Select, SubmitButton } from "@/components/ui";
+import { ActionForm, BackLink, Card, Input, Pill, Select, SubmitButton } from "@/components/ui";
 import {
   adicionarPontoControvertidoAction,
   adicionarPrazoAction,
@@ -13,7 +13,11 @@ import {
   excluirPontoControvertidoAction,
   excluirPrazoAction,
   sincronizarProcessoAction,
+  gerarFichaAction,
+  explicarRecentesAction,
 } from "@/app/actions";
+import { iaDisponivel } from "@/lib/explicador";
+import { CopiarTexto } from "@/components/copiar-texto";
 import { registrarAuditoria } from "@/lib/auditoria";
 import { usuarioAtual } from "@/lib/usuarios";
 import type { PontoControvertido } from "@/lib/types";
@@ -25,6 +29,11 @@ const RISCO_TONE: Record<string, "bad" | "warn" | "ok"> = { provavel: "bad", pos
 const STATUS_LABEL: Record<PontoControvertido["status"], string> = { pendente: "Pendente", favoravel: "Favorável", desfavoravel: "Desfavorável" };
 const STATUS_TONE: Record<PontoControvertido["status"], "neutral" | "ok" | "bad"> = { pendente: "neutral", favoravel: "ok", desfavoravel: "bad" };
 const STATUS_ORDEM: PontoControvertido["status"][] = ["pendente", "favoravel", "desfavoravel"];
+const IMPORTANCIA: Record<string, { rotulo: string; tom: "bad" | "warn" | "neutral" }> = {
+  alta: { rotulo: "importante", tom: "bad" },
+  media: { rotulo: "atenção", tom: "warn" },
+  baixa: { rotulo: "rotina", tom: "neutral" },
+};
 
 export default async function ProcessoDetalhe({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -78,6 +87,8 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
           <b>Como está:</b> {p.resumo_status}
         </div>
       )}
+
+      <FichaDoCaso id={id} p={p} />
 
       <Card title="Próximos prazos" hint={p.proximos_prazos?.length ? String(p.proximos_prazos.length) : undefined}>
         <div className="card-b">
@@ -194,20 +205,69 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
         </Card>
       )}
 
-      <Card title="Movimentações" hint={`${movs.length} · mais recente primeiro`}>
+      <Card
+        title="Movimentações"
+        hint={`${movs.length} · mais recente primeiro`}
+        actions={iaDisponivel() && movs.some((m) => !m.explicado_em) ? (
+          <ActionForm action={explicarRecentesAction.bind(null, id)} submitLabel="Explicar recentes" tone="sm" />
+        ) : undefined}
+      >
         <div className="card-b">
           {movs.length === 0 && <p className="empty">Nenhuma movimentação importada ainda.</p>}
           <ol className="timeline">
             {movs.map((m) => (
               <li key={m.id}>
                 <div className="d">{fmtDataHora(m.data_hora)}{m.codigo ? ` · cód. ${m.codigo}` : ""} · {m.fonte}</div>
-                <b>{m.descricao}</b>
+                <b>{m.descricao}</b>{" "}
+                {m.importancia && <Pill tone={IMPORTANCIA[m.importancia].tom}>{IMPORTANCIA[m.importancia].rotulo}</Pill>}
                 {m.complemento && <div className="sub">{m.complemento}</div>}
+                {m.explicacao && <div className="explica">{m.explicacao}</div>}
+                {m.o_que_fazer && <div className="explica fazer">➜ {m.o_que_fazer}</div>}
               </li>
             ))}
           </ol>
         </div>
       </Card>
     </>
+  );
+}
+
+function FichaDoCaso({ id, p }: { id: string; p: NonNullable<Awaited<ReturnType<typeof store.getProcesso>>> }) {
+  const f = p.ficha;
+  const botao = iaDisponivel() ? (
+    <ActionForm action={gerarFichaAction.bind(null, id)} submitLabel={f ? "Atualizar ficha" : "Gerar ficha do caso"} tone={f ? "sm" : "secondary"} />
+  ) : null;
+  if (!f) {
+    return (
+      <Card title="Ficha do caso" actions={botao}>
+        <div className="card-b">
+          <p className="empty">
+            Resumo do processo feito pela IA a partir dos andamentos e dos PDFs importados: em que pé está, quem é quem, o que falta e
+            uma mensagem pronta para o Balcão Virtual. Leva cerca de 1 minuto.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Ficha do caso" hint={`gerada ${fmtDataHora(f.gerada_em)}`} actions={botao}>
+      <div className="card-b ficha">
+        <p>{f.situacao_atual}</p>
+        {f.ultima_decisao && (<><h3>Última decisão</h3><p>{f.ultima_decisao}</p></>)}
+        {f.pendencias.length > 0 && (<><h3>O que está pendente</h3><ul>{f.pendencias.map((x, i) => <li key={i}>{x}</li>)}</ul></>)}
+        {f.proximo_passo && (<><h3>Próximo passo sugerido</h3><p>{f.proximo_passo}</p></>)}
+        {f.quem_e_quem.length > 0 && (
+          <><h3>Quem é quem</h3><ul>{f.quem_e_quem.map((x, i) => <li key={i}><b>{x.nome}</b> — {x.papel}</li>)}</ul></>
+        )}
+        <h3>Mensagem para o Balcão Virtual</h3>
+        <blockquote>{f.roteiro_balcao}</blockquote>
+        <CopiarTexto texto={f.roteiro_balcao} />
+        {f.limites.length > 0 && (
+          <p className="sub" style={{ marginTop: 12 }}>
+            <b>Limites desta ficha:</b> {f.limites.join(" ")} A ficha é um apoio, não substitui a análise da advogada.
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }

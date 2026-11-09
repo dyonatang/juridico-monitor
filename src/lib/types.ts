@@ -58,6 +58,7 @@ export type Processo = {
   ultimo_check: string | null;
   ultimo_erro: string | null;
   aviso_fonte?: string | null; // observação sobre a fonte que NÃO é erro (ex.: processo sigiloso, fora do DataJud)
+  ficha?: import("./explicador").Ficha | null; // v2.0: resumo do caso gerado pela IA sob demanda
   created_at: string;
 };
 
@@ -71,6 +72,11 @@ export type Movimentacao = {
   fonte: string;
   hash: string;
   created_at: string;
+  // v2.0: explicação em linguagem simples (IA), gravada depois da atualização
+  explicacao?: string | null;
+  o_que_fazer?: string | null;
+  importancia?: "alta" | "media" | "baixa" | null;
+  explicado_em?: string | null;
 };
 
 export type Alerta = {
@@ -81,6 +87,9 @@ export type Alerta = {
   movimentacao_id: string | null;
   titulo: string;
   mensagem: string;
+  explicacao?: string | null; // v2.0: copiada do andamento quando a IA explica
+  o_que_fazer?: string | null;
+  importancia?: "alta" | "media" | "baixa" | null;
   lido: boolean;
   notificado_em: string | null;
   created_at: string;

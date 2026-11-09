@@ -10,6 +10,7 @@ import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdm
 import { registrarAuditoria } from "@/lib/auditoria";
 import type { Papel, PontoControvertido, Prazo } from "@/lib/types";
 import { apagarArquivo } from "@/lib/storage";
+import { explicarAndamentos, gerarFicha, iaDisponivel } from "@/lib/explicador";
 import type { ResultadoProcessoImportado } from "@/lib/types";
 
 export type ActionState = { erro?: string; ok?: string } | undefined;
@@ -87,7 +88,7 @@ export async function adicionarPontoControvertidoAction(id: string, fd: FormData
   const eu = await exigirAdmin();
   const texto = str(fd, "texto").trim();
   if (!texto) return;
-  const p = await store.getProcesso(id);
+  const p = await store.getProcesso(id, { fresco: true });
   if (!p) return;
   const ponto: PontoControvertido = { id: store.novoId("processos"), texto, status: "pendente", created_at: store.agora() };
   const pontos = [...(p.pontos_controvertidos ?? []), ponto];
@@ -98,7 +99,7 @@ export async function adicionarPontoControvertidoAction(id: string, fd: FormData
 
 export async function atualizarStatusPontoAction(id: string, pontoId: string, status: PontoControvertido["status"]) {
   const eu = await exigirAdmin();
-  const p = await store.getProcesso(id);
+  const p = await store.getProcesso(id, { fresco: true });
   if (!p?.pontos_controvertidos) return;
   const pontos = p.pontos_controvertidos.map((pt) => (pt.id === pontoId ? { ...pt, status } : pt));
   await store.atualizar("processos", id, { pontos_controvertidos: pontos });
@@ -108,7 +109,7 @@ export async function atualizarStatusPontoAction(id: string, pontoId: string, st
 
 export async function excluirPontoControvertidoAction(id: string, pontoId: string) {
   const eu = await exigirAdmin();
-  const p = await store.getProcesso(id);
+  const p = await store.getProcesso(id, { fresco: true });
   if (!p?.pontos_controvertidos) return;
   const pontos = p.pontos_controvertidos.filter((pt) => pt.id !== pontoId);
   await store.atualizar("processos", id, { pontos_controvertidos: pontos });
@@ -121,7 +122,7 @@ export async function adicionarPrazoAction(id: string, fd: FormData) {
   const data = str(fd, "data").trim();
   const descricao = str(fd, "descricao").trim();
   if (!data || !descricao) return;
-  const p = await store.getProcesso(id);
+  const p = await store.getProcesso(id, { fresco: true });
   if (!p) return;
   const prazo: Prazo = { id: store.novoId("processos"), data, descricao, created_at: store.agora() };
   const prazos = [...(p.proximos_prazos ?? []), prazo];
@@ -133,7 +134,7 @@ export async function adicionarPrazoAction(id: string, fd: FormData) {
 
 export async function excluirPrazoAction(id: string, prazoId: string) {
   const eu = await exigirAdmin();
-  const p = await store.getProcesso(id);
+  const p = await store.getProcesso(id, { fresco: true });
   if (!p?.proximos_prazos) return;
   const prazos = p.proximos_prazos.filter((pr) => pr.id !== prazoId);
   await store.atualizar("processos", id, { proximos_prazos: prazos });
@@ -266,4 +267,39 @@ export async function redefinirSenhaAction(login: string, fd: FormData) {
   await atualizarUsuario(login, { senha: str(fd, "senha") });
   await registrarAuditoria("redefiniu_senha", { tipo: "usuario", id: login }, eu.login);
   revalidatePath("/usuarios");
+}
+
+// ------------------------------------------------------------------ v2.0 (IA)
+
+/** Gera (ou atualiza) a ficha do caso. Leva de 20 s a 1 min. */
+export async function gerarFichaAction(id: string, _: ActionState): Promise<ActionState> {
+  try {
+    const eu = await exigirAdmin();
+    if (!iaDisponivel()) return { erro: "Leitura por IA não configurada (ANTHROPIC_API_KEY)." };
+    await gerarFicha(id);
+    await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "gerou ficha do caso (IA)" }, eu.login);
+    revalidatePath(`/processos/${id}`);
+    return { ok: "Ficha atualizada." };
+  } catch (e) {
+    return { erro: msg(e) };
+  }
+}
+
+/** Explica os andamentos mais recentes que ainda não têm explicação (até 15). */
+export async function explicarRecentesAction(id: string, _: ActionState): Promise<ActionState> {
+  try {
+    const eu = await exigirAdmin();
+    if (!iaDisponivel()) return { erro: "Leitura por IA não configurada (ANTHROPIC_API_KEY)." };
+    const p = await store.getProcesso(id, { fresco: true });
+    if (!p) return { erro: "Processo não encontrado." };
+    const sem = (await store.listarMovimentacoes(id)).filter((m) => !m.explicado_em).slice(0, 15);
+    if (!sem.length) return { ok: "Os andamentos recentes já estão explicados." };
+    const n = await explicarAndamentos(p, sem);
+    await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: `explicou ${n} andamento(s) (IA)` }, eu.login);
+    revalidatePath(`/processos/${id}`);
+    tudo();
+    return { ok: `${n} andamento(s) explicado(s).` };
+  } catch (e) {
+    return { erro: msg(e) };
+  }
 }

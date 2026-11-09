@@ -5,6 +5,7 @@ import type { ResultadoLote } from "./providers/datajud";
 import type { Processo } from "./types";
 import { notificarPendentes } from "./notify";
 import { hashMov } from "./movimento";
+import { explicarPendentes } from "./explicador";
 
 /** Garante que o processo exista. Se for novo e "descoberto", gera alerta de novo processo. */
 export async function upsertProcessoRemoto(
@@ -285,10 +286,18 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Prom
     verificados: 0, novas: 0, erros: [], pendentes: processos.length, naoVerificados: processos.map((p) => p.numero_formatado),
   };
   let atrasados: string[] = [];
+  let explicacao: { explicados: number; erros: string[] } = { explicados: 0, erros: [] };
   try {
     r = provedorDeProcesso().nome === "datajud"
       ? await sincronizarViaDataJudEmLote(processos, prazoFinal)
       : await sincronizarUmPorUm(processos, prazoFinal);
+    // v2.0: explicação dos andamentos novos (IA), com o tempo que sobrou da rodada (+40 s de
+    // folga dentro do limite de 300 s da rota). O que não couber fica para a próxima rodada.
+    // Falha aqui nunca derruba a atualização nem conta como erro do CNJ.
+    explicacao = await explicarPendentes(prazoFinal + 40_000).catch((e) => ({
+      explicados: 0,
+      erros: [`Explicação dos andamentos: ${e instanceof Error ? e.message : String(e)}`],
+    }));
   } catch (e) {
     r.erros.push(`Falha geral na atualização: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
@@ -307,7 +316,7 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Prom
       processos_verificados: r.verificados,
       novas_movimentacoes: r.novas,
       erros: r.erros.length,
-      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, parcial: r.pendentes > 0, nao_verificados: r.naoVerificados, atrasados },
+      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, parcial: r.pendentes > 0, nao_verificados: r.naoVerificados, atrasados, explicados: explicacao.explicados, erros_explicacao: explicacao.erros },
     });
   }
   return { ...r, atrasados };
