@@ -19,6 +19,8 @@ export type ActionState = { erro?: string; ok?: string } | undefined;
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null)?.toString() ?? "";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const tudo = () => ["/", "/documentos", "/processos", "/alertas", "/importar"].forEach((p) => revalidatePath(p));
+/** Intervalo mínimo entre rodadas para o botão "Sincronizar agora" (ver sincronizarTudoAction). */
+const INTERVALO_MINIMO_MANUAL_MS = 10 * 60_000;
 
 export async function criarDocumentoAction(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
@@ -153,13 +155,21 @@ export async function sincronizarProcessoAction(id: string) {
 
 export async function sincronizarTudoAction(_: ActionState): Promise<ActionState> {
   try {
-    // Botão do painel: requisição interativa. A consulta em lote ao DataJud costuma levar
-    // 30-40s; o orçamento dá folga pra uma nova tentativa se a fonte engasgar.
+    // Uma rodada logo depois da outra é justamente o que faz o CNJ recusar (429): o botão só
+    // consulta se a última rodada (automática ou manual) começou há mais de 10 minutos.
+    const ultimo = await store.ultimoSyncLog();
+    const desde = ultimo ? Date.now() - new Date(ultimo.iniciado_em).getTime() : Infinity;
+    if (desde < INTERVALO_MINIMO_MANUAL_MS) {
+      const falta = Math.ceil((INTERVALO_MINIMO_MANUAL_MS - desde) / 60_000);
+      return { erro: `A última consulta aos tribunais começou há ${Math.floor(desde / 60_000)} min. Para não sobrecarregar a fonte do CNJ, aguarde mais ${falta} min — ou espere a rodada automática, que roda toda hora.` };
+    }
+    // Botão do painel: requisição interativa. As consultas agora vão uma de cada vez, com
+    // pausa entre elas; o que não couber nestes 85 s fica para a rodada automática.
     const r = await sincronizarTudo({ orcamentoMs: 85_000 });
     tudo();
     const partes = [`${r.verificados} processo(s) verificado(s)`, `${r.novas} andamento(s) novo(s)`];
-    if (r.erros.length) partes.push(`${r.erros.length} com erro`);
-    const pend = r.pendentes ? ` ${r.pendentes} não puderam ser verificados agora (fonte do CNJ sobrecarregada) — tente de novo em alguns minutos.` : "";
+    if (r.erros.length) partes.push(`${r.erros.length} lote(s) com problema`);
+    const pend = r.pendentes ? ` ${r.pendentes} ficaram para a próxima rodada automática (a consulta agora é feita aos poucos, para o CNJ não recusar).` : "";
     return r.erros.length
       ? { erro: `Terminou com problemas: ${partes.join(", ")}.${pend}` }
       : { ok: `Pronto: ${partes.join(", ")}.${pend}` };

@@ -85,8 +85,8 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         )}
         {soOscilacao && !atrasados.length && !emAndamento && (
           <div className="linha">
-            Normal: o CNJ recusa consultas em cerca de 1 a cada 5 rodadas e volta sozinho. Nada é perdido — os
-            andamentos desse intervalo entram na próxima verificação. Só preocupa se aparecer o aviso de 6 horas.
+            Normal: a consulta ao CNJ agora é feita aos poucos, um lote por vez, com pausas — o que não coube ou foi recusado nesta rodada
+            entra primeiro na próxima hora. Nada é perdido: os andamentos desse intervalo chegam na verificação seguinte. Só preocupa se aparecer o aviso de 6 horas.
           </div>
         )}
         {interrompida && (
@@ -135,7 +135,7 @@ export default async function Painel() {
       store.listarProcessos({ apenasAtivos: true }),
       store.listarDocumentos(true),
       store.listarAlertas({ apenasNaoLidos: true }),
-      store.movimentacoesRecentes(new Date(Date.now() - 7 * 86400000).toISOString(), 10),
+      store.movimentacoesComAtoDesde(new Date(Date.now() - 7 * 86400000).toISOString()),
       store.listarProximosPrazos(8),
       store.ultimoSyncLog(),
       store.movimentacoesPorDataDoAto(inicioGraficos()),
@@ -165,7 +165,19 @@ export default async function Painel() {
     if (p) comAlerta.add(p.id);
     grupos.get(grupoDe(p?.documento_id))!.alertas++;
   }
-  for (const m of movs) {
+  // Últimas movimentações: UMA linha por processo, com o andamento mais recente pela data do
+  // ato (não pela ordem em que entrou no sistema — uma carga inicial traz andamentos antigos).
+  const porProc = new Map<string, { m: (typeof movs)[number]; total: number }>();
+  for (const m of movs.filter((x) => porId.has(x.processo_id))) {
+    const g = porProc.get(m.processo_id);
+    if (!g) porProc.set(m.processo_id, { m, total: 1 });
+    else {
+      g.total++;
+      if (m.data_hora > g.m.data_hora) g.m = m;
+    }
+  }
+  const ultimosPorProc = [...porProc.values()].sort((a, b) => b.m.data_hora.localeCompare(a.m.data_hora));
+  for (const { m } of ultimosPorProc) {
     const g = grupos.get(grupoDe(porId.get(m.processo_id)?.documento_id))!;
     if (!g.ultimo) g.ultimo = `${fmtDataHora(m.data_hora).slice(0, 5)} — ${m.descricao}`;
   }
@@ -336,27 +348,31 @@ export default async function Painel() {
           </div>
         </Card>
 
-        <Card title="Últimas movimentações" hint="7 dias">
+        <Card title="Últimas movimentações" hint="andamentos dos últimos 7 dias · o mais recente de cada processo">
           <div className="card-b">
-            {movs.length === 0 && <p className="empty">Nenhuma movimentação nos últimos 7 dias.</p>}
+            {ultimosPorProc.length === 0 && <p className="empty">Nenhuma movimentação nos últimos 7 dias.</p>}
             <ul className="feed">
-              {movs.map((m) => {
+              {ultimosPorProc.slice(0, 10).map(({ m, total }) => {
                 const p = porId.get(m.processo_id);
                 return (
-                  <ItemLink key={m.id} href={`/processos/${m.processo_id}`}>
+                  <ItemLink key={m.processo_id} href={`/processos/${m.processo_id}`}>
                     <span className="stripe" style={{ background: p ? `var(${corVinc.get(grupoDe(p.documento_id))})` : "var(--line-strong)" }} />
                     <div>
                       <Link href={`/processos/${m.processo_id}`} className="t link mono">{p?.numero_formatado ?? m.processo_id}</Link>
                       {p?.descricao && <span className="sub"> · {p.descricao}</span>}
                       <div className="m">{m.descricao}{m.complemento && <span className="hint"> — {m.complemento}</span>}</div>
                       {m.explicacao && <div className="explica">{m.explicacao}</div>}
-                      <div className="when">{fmtDataHora(m.data_hora)}</div>
+                      <div className="when">
+                        {fmtDataHora(m.data_hora)}
+                        {total > 1 && <span className="hint"> · +{total - 1} outro(s) andamento(s) nestes 7 dias — ver no processo</span>}
+                      </div>
                     </div>
                     <span />
                   </ItemLink>
                 );
               })}
             </ul>
+            {ultimosPorProc.length > 10 && <p className="hint" style={{ marginTop: 8 }}>e mais {ultimosPorProc.length - 10} processo(s) com andamento nesta semana.</p>}
           </div>
         </Card>
       </div>

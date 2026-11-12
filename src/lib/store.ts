@@ -338,6 +338,26 @@ export function movimentacoesPorDataDoAto(desdeDia: string): Promise<Pick<Movime
     return out;
   });
 }
+/**
+ * Andamentos cuja DATA DO ATO é a partir de `desdeISO` (documentos completos, sem duplicatas).
+ * Diferente de movimentacoesRecentes, que olha quando o andamento entrou no sistema: a
+ * primeira carga de um processo grava o histórico inteiro de uma vez (ex.: 325 andamentos
+ * desde 2015 do 0001331-69.2015 em 09/11/2026), e isso não é "movimentação da semana".
+ */
+export function movimentacoesComAtoDesde(desdeISO: string): Promise<Movimentacao[]> {
+  const desde = desdeISO.slice(0, 13); // arredonda à hora para a memória ser reaproveitada
+  return lembrar(`atoDesde:${desde}`, async () => {
+    const todas = await all<Movimentacao>(fs().collection("movimentacoes").where("data_hora", ">=", desde));
+    todas.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+    const vistas = new Set<string>();
+    return todas.filter((m) => {
+      const k = `${m.processo_id}|${hashGravado(m)}`;
+      if (vistas.has(k)) return false;
+      vistas.add(k);
+      return true;
+    });
+  });
+}
 export function movimentacoesRecentes(desdeISO: string, limite = 300): Promise<Movimentacao[]> {
   const desde = desdeISO.slice(0, 16); // arredonda ao minuto para a memória ser reaproveitada (inclui até 1 min a mais)
   return lembrar(`recentes:${desde}:${limite}`, () =>

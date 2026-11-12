@@ -178,10 +178,31 @@ async function emParalelo<T>(itens: T[], fn: (item: T) => Promise<void>, n = 6) 
   }));
 }
 
+/** Máximo de processos por consulta ao DataJud — lotes menores pesam menos na fonte. */
+const MAX_POR_CONSULTA = 25;
+/** Pausa entre uma consulta e a próxima (a fonte do CNJ devolve 429 quando recebe consultas seguidas). */
+const PAUSA_ENTRE_LOTES_MS = 8_000;
+/** Depois de uma recusa por sobrecarga, espera mais antes de tentar o próximo lote. */
+const PAUSA_APOS_SOBRECARGA_MS = 25_000;
+/** Com tantas recusas seguidas na mesma rodada, para de insistir: o resto fica pra próxima hora. */
+const MAX_SOBRECARGAS_SEGUIDAS = 2;
+
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Divide em partes iguais de no máximo `max` (42 → 21 + 21, em vez de 25 + 17). */
+function fatiar<T>(lista: T[], max: number): T[][] {
+  const partes = Math.ceil(lista.length / max);
+  const tam = Math.ceil(lista.length / partes);
+  return Array.from({ length: partes }, (_, i) => lista.slice(i * tam, (i + 1) * tam));
+}
+
 /**
- * Verificação via DataJud em lote: uma requisição por tribunal (todos em paralelo) em vez de
- * uma por processo. Falha de um tribunal inteiro (sobrecarga) vira UMA linha de erro no log e
- * os processos ficam pendentes pra próxima rodada, sem marcar cada um como "com erro".
+ * Verificação via DataJud em lotes, UM DE CADA VEZ (v2.1, 12/11/2026). Antes eram todos os
+ * tribunais em paralelo, com até 100 números por consulta e novas tentativas em sequência
+ * rápida — o CNJ respondia 429 ("muitas consultas") em quase toda rodada (36 de 36 em
+ * 11-12/11). Agora: lotes de até 25, em fila, com pausa entre eles; os processos checados
+ * há mais tempo vão primeiro, e o que não couber na rodada fica pra próxima hora. Falha de
+ * um lote vira UMA linha de erro no log, sem marcar cada processo como "com erro".
  */
 async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: number) {
   let verificados = 0;
@@ -198,18 +219,42 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
     }
     grupos.set(alias, [...(grupos.get(alias) ?? []), p]);
   }
+  // `processos` já vem do checado há mais tempo para o mais recente: o lote com o processo
+  // mais "velho" vai primeiro, então quem ficou de fora numa rodada é o primeiro da próxima.
+  const lotes = [...grupos]
+    .flatMap(([alias, lista]) => fatiar(lista, MAX_POR_CONSULTA).map((parte) => [alias, parte] as const))
+    .sort(([, a], [, b]) => (a[0].ultimo_check ?? "").localeCompare(b[0].ultimo_check ?? ""));
 
-  await Promise.all(
-    [...grupos].map(async ([alias, lista]) => {
-      let lote: ResultadoLote;
-      try {
-        lote = await datajud.consultarLote(alias, lista.map((p) => p.numero_cnj), { prazoFinal });
-      } catch (e) {
-        erros.push(`${alias.toUpperCase()} (${lista.length} processo(s) não verificados): ${e instanceof Error ? e.message : String(e)}`);
-        pendentes += lista.length;
-        naoVerificados.push(...lista.map((p) => p.numero_formatado));
-        return;
-      }
+  const deixarParaDepois = (alias: string, lista: readonly Processo[], motivo: string) => {
+    erros.push(`${alias.toUpperCase()} (${lista.length} processo(s) não verificados): ${motivo}`);
+    pendentes += lista.length;
+    naoVerificados.push(...lista.map((p) => p.numero_formatado));
+  };
+
+  let sobrecargasSeguidas = 0;
+  for (let i = 0; i < lotes.length; i++) {
+    const [alias, lista] = lotes[i];
+    if (i > 0) await espera(sobrecargasSeguidas ? PAUSA_APOS_SOBRECARGA_MS : PAUSA_ENTRE_LOTES_MS);
+    if (sobrecargasSeguidas >= MAX_SOBRECARGAS_SEGUIDAS || prazoFinal - Date.now() < 15_000) {
+      // Para de insistir nesta rodada: junta o que sobrou numa linha por tribunal.
+      const resto = new Map<string, Processo[]>();
+      for (const [a, l] of lotes.slice(i)) resto.set(a, [...(resto.get(a) ?? []), ...l]);
+      const motivo = sobrecargasSeguidas >= MAX_SOBRECARGAS_SEGUIDAS
+        ? "a fonte do CNJ recusou as últimas consultas — fica para a próxima rodada, sem insistir"
+        : "não coube no tempo desta rodada — fica para a próxima";
+      for (const [a, l] of resto) deixarParaDepois(a, l, motivo);
+      break;
+    }
+    let lote: ResultadoLote;
+    try {
+      lote = await datajud.consultarLote(alias, lista.map((p) => p.numero_cnj), { prazoFinal });
+      sobrecargasSeguidas = 0;
+    } catch (e) {
+      sobrecargasSeguidas++;
+      deixarParaDepois(alias, lista, e instanceof Error ? e.message : String(e));
+      continue;
+    }
+    {
       await emParalelo(lista, async (p) => {
         const remoto = lote.encontrados.get(p.numero_cnj);
         try {
@@ -229,8 +274,8 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
           naoVerificados.push(p.numero_formatado);
         }
       });
-    }),
-  );
+    }
+  }
   return { verificados, novas, erros, pendentes, naoVerificados };
 }
 

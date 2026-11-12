@@ -20,7 +20,12 @@ function normalizarDataAjuizamento(raw?: string): string | null {
 }
 
 const TIMEOUT_MS = 40_000;
-const TENTATIVAS = 3;
+/** Tentativas por consulta. Eram 3 com espera curta (3 s, 12 s): insistir rápido piorava o 429. */
+const TENTATIVAS = 2;
+/** Espera antes de repetir uma consulta recusada por sobrecarga (429/5xx) ou sem resposta. */
+const ESPERA_SOBRECARGA_MS = 20_000;
+/** Passadas extras quando a resposta vem parcial (parte dos shards fora). */
+const PASSADAS_PARCIAL = 2;
 /** Uma consulta em lote leva quase o mesmo tempo que uma individual (~30-40s), mas precisa de folga. */
 const TIMEOUT_LOTE_MS = 90_000;
 /** Números por requisição em lote — cada processo pode vir em vários "hits" (um por grau). */
@@ -146,7 +151,7 @@ export class DataJudProvider implements ProcessoProvider {
       } catch (e) {
         const nome = e instanceof Error ? e.name : "";
         ultimoErro = nome === "TimeoutError" || nome === "AbortError" ? `DataJud ${alias} não respondeu em ${Math.round(limite / 1000)}s` : `DataJud ${alias}: falha de rede`;
-        if (tentativa < TENTATIVAS) await espera(3000 * tentativa ** 2);
+        if (tentativa < TENTATIVAS) await espera(ESPERA_SOBRECARGA_MS);
         continue;
       }
       if (res.ok) return (await res.json()) as DataJudResposta;
@@ -154,7 +159,7 @@ export class DataJudProvider implements ProcessoProvider {
       if (res.status !== 429 && res.status < 500) throw new Error(`DataJud ${alias} respondeu ${res.status}: ${texto}`);
       ultimoErro = `DataJud ${alias} respondeu ${res.status} (sobrecarga)`;
       const retryAfter = Number(res.headers.get("retry-after"));
-      if (tentativa < TENTATIVAS) await espera(retryAfter > 0 ? Math.min(retryAfter, 30) * 1000 : 3000 * tentativa ** 2);
+      if (tentativa < TENTATIVAS) await espera(retryAfter > 0 ? Math.min(Math.max(retryAfter * 1000, ESPERA_SOBRECARGA_MS), 60_000) : ESPERA_SOBRECARGA_MS);
     }
     throw new DataJudIndisponivel(`${ultimoErro} — tentar de novo mais tarde`);
   }
@@ -192,7 +197,7 @@ export class DataJudProvider implements ProcessoProvider {
       // vier, até uma resposta completa ou acabar o tempo/tentativas.
       const registros = new Map<string, Map<string, DataJudHit>>();
       let parcial = true;
-      for (let passada = 1; parcial && passada <= TENTATIVAS; passada++) {
+      for (let passada = 1; parcial && passada <= PASSADAS_PARCIAL; passada++) {
         let json: DataJudResposta;
         try {
           json = await this.buscar(
@@ -215,7 +220,7 @@ export class DataJudProvider implements ProcessoProvider {
           registros.set(n, doProcesso);
         }
         parcial = resultadoParcial(json);
-        if (parcial && passada < TENTATIVAS) await espera(2000);
+        if (parcial && passada < PASSADAS_PARCIAL) await espera(8000);
       }
       for (const [n, hits] of registros) encontrados.set(n, montarRemoto(alias, n, [...hits.values()]));
       if (parcial) parcialFinal = true;
