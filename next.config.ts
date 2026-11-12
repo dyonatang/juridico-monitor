@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: "30mb", // upload de PDFs pelo formulário
+      // Endereço dfv-juridico.web.app (Firebase Hosting → ponte → App Hosting).
+      allowedOrigins: ["dfv-juridico.web.app", "dfv-juridico.firebaseapp.com"],
     },
   },
   serverExternalPackages: ["firebase-admin", "pdf-parse"],

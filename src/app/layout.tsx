@@ -26,12 +26,17 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const SCRIPT_TEMA = "try{var m=document.cookie.match(/(?:^|; )tema=(light|dark)/);if(m)document.documentElement.dataset.theme=m[1]}catch(e){}";
+
 /** Tema: escuro por padrão (visual 2.0); "claro" quando a pessoa escolhe no menu (cookie `tema`). */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const tema = (await cookies()).get("tema")?.value === "light" ? "light" : "dark";
   return (
-    <html lang="pt-BR" data-theme={tema}>
+    <html lang="pt-BR" data-theme={tema} suppressHydrationWarning>
       <head>
+        {/* Pelo endereço dfv-juridico.web.app o cookie `tema` não chega ao servidor (o Hosting só
+            repassa `__session`): aplica a escolha no navegador antes de desenhar a tela. */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link

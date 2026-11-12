@@ -2,7 +2,15 @@
  * Sessão do dashboard: cookie assinado (HMAC-SHA256) com validade de 30 dias.
  * Usa Web Crypto para funcionar tanto no proxy quanto nas server actions.
  */
-export const COOKIE_SESSAO = "jm_sessao";
+/**
+ * Nome do cookie: `__session` é o único que o Firebase Hosting repassa ao sistema (endereço
+ * dfv-juridico.web.app). Sessões antigas (`jm_sessao`) continuam valendo até expirar.
+ */
+export const COOKIE_SESSAO = "__session";
+export const COOKIE_SESSAO_ANTIGO = "jm_sessao";
+export function lerSessao(jar: { get(nome: string): { value: string } | undefined }): string | undefined {
+  return jar.get(COOKIE_SESSAO)?.value ?? jar.get(COOKIE_SESSAO_ANTIGO)?.value;
+}
 const DIAS = 30;
 
 const segredo = () =>

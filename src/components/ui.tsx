@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/actions";
+import { emAndamento, SituacaoTarefa, useTarefa } from "./tarefa";
 
 export function Card({ title, children, actions, hint }: { title?: string; children: React.ReactNode; actions?: React.ReactNode; hint?: string }) {
   return (
@@ -84,12 +85,15 @@ export function ActionForm({
   tone?: "primary" | "secondary" | "sm";
 }) {
   const [state, formAction] = useActionState(action, undefined);
+  const tarefa = useTarefa(state?.tarefa);
+  const ocupado = emAndamento(tarefa);
   return (
     <form action={formAction} className={children ? "form" : "form-botao"}>
       {children}
       <div className="actions">
-        <SubmitButton tone={tone}>{submitLabel}</SubmitButton>
-        {state?.erro ? <span className="msg-err">{state.erro}</span> : state?.ok ? <span className="msg-ok">{state.ok}</span> : hint && <span className="hint">{hint}</span>}
+        {ocupado ? <button type="button" disabled className={tone === "sm" ? "btn sm" : tone === "secondary" ? "btn" : "btn primary"}>Processando…</button> : <SubmitButton tone={tone}>{submitLabel}</SubmitButton>}
+        {tarefa ? <SituacaoTarefa estado={tarefa} rodando="A IA está trabalhando — pode continuar usando o sistema" />
+          : state?.erro ? <span className="msg-err">{state.erro}</span> : state?.ok ? <span className="msg-ok">{state.ok}</span> : hint && <span className="hint">{hint}</span>}
       </div>
     </form>
   );

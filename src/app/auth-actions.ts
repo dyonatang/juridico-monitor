@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { COOKIE_SESSAO, criarSessao } from "@/lib/auth";
+import { COOKIE_SESSAO, COOKIE_SESSAO_ANTIGO, criarSessao } from "@/lib/auth";
 import { autenticar } from "@/lib/usuarios";
 
 export type LoginState = { erro?: string } | undefined;
@@ -30,10 +30,13 @@ export async function loginAction(_: LoginState, fd: FormData): Promise<LoginSta
     expires: expira,
     path: "/",
   });
+  (await cookies()).delete(COOKIE_SESSAO_ANTIGO);
   redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
 }
 
 export async function logoutAction() {
-  (await cookies()).delete(COOKIE_SESSAO);
+  const jar = await cookies();
+  jar.delete(COOKIE_SESSAO);
+  jar.delete(COOKIE_SESSAO_ANTIGO);
   redirect("/login");
 }

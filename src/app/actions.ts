@@ -4,17 +4,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as store from "@/lib/store";
 import { cadastrarDocumento, cadastrarProcesso, marcarAlertasLidos, ativarMonitoramentoDocumento } from "@/lib/repo";
-import { sincronizarProcesso, sincronizarTudo } from "@/lib/sync";
-import { importarPdf } from "@/lib/importar";
-import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario } from "@/lib/usuarios";
+import { sincronizarProcesso } from "@/lib/sync";
+import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario, usuarioAtual } from "@/lib/usuarios";
 import { registrarAuditoria } from "@/lib/auditoria";
 import type { Papel, PontoControvertido, Prazo } from "@/lib/types";
-import { apagarArquivo } from "@/lib/storage";
-import { explicarAndamentos, gerarFicha, iaDisponivel } from "@/lib/explicador";
-import { gerarRelatorio } from "@/lib/relatorio";
+import { apagarArquivo, salvarArquivo } from "@/lib/storage";
+import { iaDisponivel } from "@/lib/explicador";
+import { criarTarefa } from "@/lib/tarefas";
 import type { ResultadoProcessoImportado } from "@/lib/types";
 
-export type ActionState = { erro?: string; ok?: string } | undefined;
+/** `tarefa`: id de uma tarefa em segundo plano que a tela acompanha (ver lib/tarefas.ts). */
+export type ActionState = { erro?: string; ok?: string; tarefa?: string } | undefined;
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null)?.toString() ?? "";
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -163,16 +163,9 @@ export async function sincronizarTudoAction(_: ActionState): Promise<ActionState
       const falta = Math.ceil((INTERVALO_MINIMO_MANUAL_MS - desde) / 60_000);
       return { erro: `A última consulta aos tribunais começou há ${Math.floor(desde / 60_000)} min. Para não sobrecarregar a fonte do CNJ, aguarde mais ${falta} min — ou espere o robô automático (6h e 18h).` };
     }
-    // Botão do painel: requisição interativa. As consultas agora vão uma de cada vez, com
-    // pausa entre elas; o que não couber nestes 85 s fica para a rodada automática.
-    const r = await sincronizarTudo({ orcamentoMs: 85_000 });
-    tudo();
-    const partes = [`${r.verificados} processo(s) verificado(s)`, `${r.novas} andamento(s) novo(s)`];
-    if (r.erros.length) partes.push(`${r.erros.length} lote(s) com problema`);
-    const pend = r.pendentes ? ` ${r.pendentes} ficaram para a próxima rodada automática (a consulta agora é feita aos poucos, para o CNJ não recusar).` : "";
-    return r.erros.length
-      ? { erro: `Terminou com problemas: ${partes.join(", ")}.${pend}` }
-      : { ok: `Pronto: ${partes.join(", ")}.${pend}` };
+    // Roda em segundo plano (lib/tarefas.ts); a tela acompanha e mostra o resultado no fim.
+    const login = (await usuarioAtual())?.login ?? "sistema";
+    return { tarefa: await criarTarefa("sincronizar", {}, login) };
   } catch (e) {
     return { erro: `A atualização falhou: ${msg(e)}` };
   }
@@ -195,9 +188,13 @@ export async function marcarLidoAction(id?: string) {
 }
 
 export type ImportState =
-  | { erro?: string; resultados?: { nome: string; processos: ResultadoProcessoImportado[]; resumo: string | null; erro: string | null }[] }
+  | { erro?: string; tarefa?: string; resultados?: { nome: string; processos: ResultadoProcessoImportado[]; resumo: string | null; erro: string | null }[] }
   | undefined;
 
+/**
+ * Guarda os PDFs numa pasta temporária e cria a tarefa que lê cada um com IA em segundo
+ * plano (a leitura leva de 20 s a 2 min por documento — ver lib/tarefas.ts).
+ */
 export async function importarPdfAction(_: ImportState, fd: FormData): Promise<ImportState> {
   let eu;
   try {
@@ -208,22 +205,20 @@ export async function importarPdfAction(_: ImportState, fd: FormData): Promise<I
   const files = fd.getAll("arquivos").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) return { erro: "Escolha pelo menos um PDF." };
   const documento_id = str(fd, "documento_id") || null;
-  const resultados: NonNullable<ImportState>["resultados"] = [];
-  for (const f of files) {
-    if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
-      resultados.push({ nome: f.name, processos: [], resumo: null, erro: "Não é um PDF." });
-      continue;
+  const pdfs = files.filter((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+  if (pdfs.length === 0) return { erro: "Nenhum dos arquivos é PDF." };
+  try {
+    const lote = store.novoId("tarefas");
+    const arquivos: { nome: string; caminho: string }[] = [];
+    for (const [i, f] of pdfs.entries()) {
+      const caminho = `envios/${lote}/${i}.pdf`; // cópia temporária, apagada depois da leitura
+      await salvarArquivo(caminho, Buffer.from(await f.arrayBuffer()), "application/pdf");
+      arquivos.push({ nome: f.name, caminho });
     }
-    try {
-      const a = await importarPdf({ nome: f.name, bytes: Buffer.from(await f.arrayBuffer()), documento_id });
-      await registrarAuditoria("importou_pdf", { tipo: "arquivo", id: a.id, rotulo: f.name }, eu.login);
-      resultados.push({ nome: f.name, processos: a.resultado, resumo: a.analise?.resumo ?? null, erro: null });
-    } catch (e) {
-      resultados.push({ nome: f.name, processos: [], resumo: null, erro: msg(e) });
-    }
+    return { tarefa: await criarTarefa("importar", { arquivos, documento_id }, eu.login) };
+  } catch (e) {
+    return { erro: `Não foi possível enviar: ${msg(e)}` };
   }
-  tudo();
-  return { resultados };
 }
 
 export async function excluirArquivoAction(id: string) {
@@ -282,15 +277,15 @@ export async function redefinirSenhaAction(login: string, fd: FormData) {
 
 // ------------------------------------------------------------------ v2.0 (IA)
 
-/** Gera (ou atualiza) a ficha do caso. Leva de 20 s a 1 min. */
+// As três rodam em segundo plano (lib/tarefas.ts): o pedido volta na hora com o id da tarefa
+// e a tela acompanha — pelo endereço .web.app nenhum pedido pode passar de 60 s.
+
+/** Gera (ou atualiza) a ficha do caso. Leva de 20 s a 2 min. */
 export async function gerarFichaAction(id: string, _: ActionState): Promise<ActionState> {
   try {
     const eu = await exigirAdmin();
     if (!iaDisponivel()) return { erro: "Leitura por IA não configurada (ANTHROPIC_API_KEY)." };
-    await gerarFicha(id);
-    await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: "gerou ficha do caso (IA)" }, eu.login);
-    revalidatePath(`/processos/${id}`);
-    return { ok: "Ficha atualizada." };
+    return { tarefa: await criarTarefa("ficha", { processo_id: id }, eu.login) };
   } catch (e) {
     return { erro: msg(e) };
   }
@@ -301,15 +296,9 @@ export async function explicarRecentesAction(id: string, _: ActionState): Promis
   try {
     const eu = await exigirAdmin();
     if (!iaDisponivel()) return { erro: "Leitura por IA não configurada (ANTHROPIC_API_KEY)." };
-    const p = await store.getProcesso(id, { fresco: true });
-    if (!p) return { erro: "Processo não encontrado." };
-    const sem = (await store.listarMovimentacoes(id)).filter((m) => !m.explicado_em).slice(0, 15);
+    const sem = (await store.listarMovimentacoes(id)).filter((m) => !m.explicado_em);
     if (!sem.length) return { ok: "Os andamentos recentes já estão explicados." };
-    const n = await explicarAndamentos(p, sem);
-    await registrarAuditoria("editou_processo", { tipo: "processo", id, rotulo: `explicou ${n} andamento(s) (IA)` }, eu.login);
-    revalidatePath(`/processos/${id}`);
-    tudo();
-    return { ok: `${n} andamento(s) explicado(s).` };
+    return { tarefa: await criarTarefa("explicar", { processo_id: id }, eu.login) };
   } catch (e) {
     return { erro: msg(e) };
   }
@@ -320,11 +309,7 @@ export async function gerarRelatorioAction(_: ActionState): Promise<ActionState>
   try {
     const eu = await exigirAdmin();
     if (!iaDisponivel()) return { erro: "Leitura por IA não configurada (ANTHROPIC_API_KEY)." };
-    const r = await gerarRelatorio(eu.login);
-    await registrarAuditoria("gerou_relatorio", { tipo: "relatorio", id: r.id, rotulo: `${r.total_processos} processos` }, eu.login);
-    revalidatePath("/relatorio");
-    revalidatePath("/");
-    return { ok: `Relatório pronto em ${Math.round(r.duracao_ms / 1000)} s.` };
+    return { tarefa: await criarTarefa("relatorio", {}, eu.login) };
   } catch (e) {
     return { erro: msg(e) };
   }

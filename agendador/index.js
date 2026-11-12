@@ -70,6 +70,25 @@ exports.roboPublicacoes = onSchedule({ ...OPCOES, schedule: "10,30,50 6,18 * * *
   logger.info("Robô de publicações concluído", { corpo });
 });
 
+// Endereço dfv-juridico.web.app → sistema (ver portal.js).
+exports.portal = require("./portal").portal;
+
+/**
+ * Tarefas em segundo plano (src/lib/tarefas.ts): quando a tela cria um documento em
+ * `tarefas`, esta função chama o sistema para executá-lo (até 5 min). Fica na mesma região
+ * do Firestore (São Paulo), exigência do gatilho. Sem nova tentativa automática: se falhar,
+ * a tela mostra o erro e a pessoa decide se tenta de novo (evita gastar IA duas vezes).
+ */
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+exports.executarTarefa = onDocumentCreated(
+  { document: "tarefas/{id}", region: "southamerica-east1", secrets: [CRON_SECRET], timeoutSeconds: 360, memory: "256MiB", retry: false },
+  async (event) => {
+    const id = event.params.id;
+    const { json } = await chamarRota(`/api/cron/tarefa?id=${encodeURIComponent(id)}`);
+    logger.info("Tarefa executada", { id, tipo: json.tipo, status: json.status, mensagem: json.mensagem });
+  },
+);
+
 /**
  * Resumo semanal (segunda-feira, 8h de Brasília).
  *

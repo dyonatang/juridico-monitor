@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_SESSAO, validarSessao } from "@/lib/auth";
+import { lerSessao, validarSessao } from "@/lib/auth";
 
 /**
  * Exige sessão (cookie assinado) em todas as telas e em /api/arquivos.
@@ -14,7 +14,7 @@ export async function proxy(req: NextRequest) {
     return new NextResponse("Sistema sem credenciais configuradas (DASHBOARD_USER/DASHBOARD_PASSWORD).", { status: 503 });
   }
 
-  const usuario = await validarSessao(req.cookies.get(COOKIE_SESSAO)?.value);
+  const usuario = await validarSessao(lerSessao(req.cookies));
   if (usuario) {
     if (pathname === "/login") return NextResponse.redirect(new URL("/", req.url));
     return NextResponse.next();

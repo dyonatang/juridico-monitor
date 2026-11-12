@@ -13,5 +13,21 @@
         "*.log"
       ]
     }
-  ]
+  ],
+  "hosting": {
+    "site": "dfv-juridico",
+    "public": "hosting-publico",
+    "ignore": [
+      "**/.*"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "function": {
+          "functionId": "portal",
+          "region": "us-central1"
+        }
+      }
+    ]
+  }
 }

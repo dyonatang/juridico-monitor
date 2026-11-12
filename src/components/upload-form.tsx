@@ -4,12 +4,16 @@ import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { importarPdfAction, type ImportState } from "@/app/actions";
 import { SubmitButton, Select } from "./ui";
+import { emAndamento, SituacaoTarefa, useTarefa } from "./tarefa";
 
 export function UploadForm({ documentos }: { documentos: { id: string; nome: string }[] }) {
   const [state, action] = useActionState<ImportState, FormData>(importarPdfAction, undefined);
   const [nomes, setNomes] = useState<string[]>([]);
   const [arrastando, setArrastando] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  // A leitura roda em segundo plano (lib/tarefas.ts); os resultados chegam pela tarefa.
+  const tarefa = useTarefa(state?.tarefa);
+  const resultados = tarefa?.resultado ?? state?.resultados;
 
   const escolher = (files: FileList | null) => setNomes(files ? Array.from(files).map((f) => f.name) : []);
 
@@ -44,14 +48,15 @@ export function UploadForm({ documentos }: { documentos: { id: string; nome: str
         {documentos.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
       </Select>
       <div className="actions">
-        <SubmitButton>Enviar e ler</SubmitButton>
-        <span className="hint">A leitura por IA leva de 20 s a 2 min por documento.</span>
+        {emAndamento(tarefa) ? <button type="button" className="btn primary" disabled>Lendo…</button> : <SubmitButton>Enviar e ler</SubmitButton>}
+        {tarefa ? <SituacaoTarefa estado={tarefa} rodando="A IA está lendo os documentos (de 20 s a 2 min cada) — pode continuar usando o sistema" />
+          : <span className="hint">A leitura por IA leva de 20 s a 2 min por documento.</span>}
       </div>
 
       {state?.erro && <div className="notice bad" style={{ gridColumn: "1 / -1" }}>{state.erro}</div>}
-      {state?.resultados && (
+      {resultados && (
         <div className="notice ok" style={{ gridColumn: "1 / -1" }}>
-          {state.resultados.map((r) => (
+          {resultados.map((r) => (
             <div key={r.nome} style={{ marginBottom: 6 }}>
               <b>{r.nome}</b>: {r.erro ? <span style={{ color: "var(--bad)" }}>{r.erro}</span> : r.processos.length === 0 ? "nenhum número de processo encontrado" : (
                 <>

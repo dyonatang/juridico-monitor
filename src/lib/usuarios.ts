@@ -7,7 +7,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import * as store from "./store";
-import { COOKIE_SESSAO, credenciaisValidas, validarSessao } from "./auth";
+import { credenciaisValidas, lerSessao, validarSessao } from "./auth";
 import type { Usuario, Papel } from "./types";
 
 const normalizarLogin = (l: string) => l.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
@@ -142,7 +142,7 @@ export async function autenticar(login: string, senha: string): Promise<Usuario 
 /** Usuário da sessão atual (server-side). null se não logado. */
 /** Memorizado por requisição (React cache): layout, menu, auditoria e página fazem 1 leitura só. */
 export const usuarioAtual = cache(async function usuarioAtual(): Promise<Usuario | null> {
-  const login = await validarSessao((await cookies()).get(COOKIE_SESSAO)?.value);
+  const login = await validarSessao(lerSessao(await cookies()));
   if (!login) return null;
   const u = await getUsuario(login).catch(() => null);
   if (u) return u.ativo ? u : null;

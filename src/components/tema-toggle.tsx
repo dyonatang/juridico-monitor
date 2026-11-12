@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icone } from "./icones";
 
 /** Troca escuro/claro na hora e grava a escolha num cookie (o servidor já renderiza no tema certo). */
 export function TemaToggle({ inicial }: { inicial: "dark" | "light" }) {
   const [tema, setTema] = useState(inicial);
+  // O servidor nem sempre recebe o cookie (endereço .web.app): confia no tema já aplicado na página.
+  useEffect(() => {
+    const atual = document.documentElement.dataset.theme;
+    if (atual === "light" || atual === "dark") setTema(atual);
+  }, []);
   const trocar = () => {
     const novo = tema === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = novo;

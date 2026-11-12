@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/app/actions";
+import { emAndamento, SituacaoTarefa, useTarefa, type EstadoTarefa } from "./tarefa";
 
 const TERMO = {
   tranquilo: { rotulo: "Tranquilo", fracao: 0.33, cor: "var(--st-good)", icone: "●" },
@@ -32,34 +33,31 @@ export function Termometro({ estado, motivo }: { estado: keyof typeof TERMO; mot
   );
 }
 
-function BotaoInterno({ rotulo, total, modelo }: { rotulo: string; total: number; modelo: string }) {
+function Gerando({ modelo, total, seg }: { modelo: string; total: number; seg: number }) {
+  return (
+    <div className="gerando" aria-live="polite">
+      <span className="anel" />
+      <span><b>{modelo} está lendo {total} processos…</b> <span className="hint">{seg}s · costuma levar de 1 a 3 minutos — roda no servidor, pode continuar usando o sistema.</span></span>
+    </div>
+  );
+}
+
+function BotaoInterno({ rotulo, total, modelo, tarefa }: { rotulo: string; total: number; modelo: string; tarefa: EstadoTarefa | null }) {
   const { pending } = useFormStatus();
-  const [seg, setSeg] = useState(0);
-  const t0 = useRef(0);
-  useEffect(() => {
-    if (!pending) { setSeg(0); return; }
-    t0.current = Date.now();
-    const id = setInterval(() => setSeg(Math.round((Date.now() - t0.current) / 1000)), 1000);
-    return () => clearInterval(id);
-  }, [pending]);
-  if (pending) {
-    return (
-      <div className="gerando" aria-live="polite">
-        <span className="anel" />
-        <span><b>{modelo} está lendo {total} processos…</b> <span className="hint">{seg}s · costuma levar de 1 a 3 minutos — pode deixar esta aba aberta.</span></span>
-      </div>
-    );
-  }
+  if (pending) return <Gerando modelo={modelo} total={total} seg={0} />;
+  if (emAndamento(tarefa)) return <Gerando modelo={modelo} total={total} seg={tarefa!.segundos} />;
   return <button type="submit" className="btn primary">{rotulo}</button>;
 }
 
 export function GerarRelatorio({ action, rotulo, total, modelo }: { action: (s: ActionState) => Promise<ActionState>; rotulo: string; total: number; modelo: string }) {
   const [state, formAction] = useActionState(action, undefined);
+  const tarefa = useTarefa(state?.tarefa);
   return (
     <form action={formAction} className="so-admin" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-      <BotaoInterno rotulo={rotulo} total={total} modelo={modelo} />
-      {state?.erro && <span className="msg-err">{state.erro}</span>}
-      {state?.ok && <span className="msg-ok">{state.ok}</span>}
+      <BotaoInterno rotulo={rotulo} total={total} modelo={modelo} tarefa={tarefa} />
+      {tarefa && !emAndamento(tarefa) ? <SituacaoTarefa estado={tarefa} rodando="" /> : null}
+      {!tarefa && state?.erro && <span className="msg-err">{state.erro}</span>}
+      {!tarefa && state?.ok && <span className="msg-ok">{state.ok}</span>}
     </form>
   );
 }
