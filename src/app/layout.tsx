@@ -6,10 +6,14 @@ export const metadata: Metadata = {
   title: "Jurídico Monitor",
   description: "Monitoramento de processos judiciais do grupo",
   applicationName: "Jurídico Monitor",
-  manifest: "/manifest.webmanifest",
+  // ?v=2: ícones do visual 2.0 (12/11/2026) — muda o endereço para o navegador não usar o antigo guardado.
+  manifest: "/manifest.webmanifest?v=2",
   icons: {
-    icon: [{ url: "/favicon.png", type: "image/png" }],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    icon: [
+      { url: "/icon.svg?v=2", type: "image/svg+xml" },
+      { url: "/favicon.png?v=2", type: "image/png", sizes: "64x64" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png?v=2", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
