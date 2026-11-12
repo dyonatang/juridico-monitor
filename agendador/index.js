@@ -1,9 +1,15 @@
 /**
- * Agendador da atualização automática (Cloud Functions do Firebase).
+ * Agendador dos robôs automáticos (Cloud Functions do Firebase).
  *
- * De hora em hora chama GET /api/cron/sync do sistema, autenticando com o segredo
- * CRON_SECRET lido do Secret Manager do próprio projeto — o mesmo que o App Hosting usa.
- * O valor nunca fica em arquivo nem passa por quem faz o deploy.
+ * v2.1 (12/11/2026, a pedido do usuário): em vez de consultar de hora em hora — o CNJ recusava
+ * (429) em quase toda rodada —, os robôs rodam em duas janelas por dia, 6h e 18h de Brasília:
+ *  - roboAndamentos  → GET /api/cron/sync        (DataJud/CNJ)  às :00, :20 e :40
+ *  - roboPublicacoes → GET /api/cron/publicacoes (DJEN, texto das publicações) às :10, :30 e :50
+ * A 1ª passada de cada janela consulta tudo; as seguintes só o que a fonte recusou ou não
+ * coube (o sistema responde na hora quando não há nada pendente).
+ *
+ * Autenticação com o segredo CRON_SECRET lido do Secret Manager do próprio projeto — o mesmo
+ * que o App Hosting usa. O valor nunca fica em arquivo nem passa por quem faz o deploy.
  *
  * Deploy:  firebase deploy --only functions:agendador
  * O endereço do sistema vem de APP_URL (arquivo .env.<id-do-projeto> nesta pasta).
@@ -15,43 +21,54 @@ const logger = require("firebase-functions/logger");
 const CRON_SECRET = defineSecret("CRON_SECRET");
 const APP_URL = defineString("APP_URL");
 
-exports.sincronizarDeHoraEmHora = onSchedule(
-  {
-    schedule: "0 * * * *",
-    timeZone: "America/Sao_Paulo",
-    region: "us-central1",
-    secrets: [CRON_SECRET],
-    timeoutSeconds: 360,
-    memory: "256MiB",
-    // Até 2 novas tentativas se a CHAMADA falhar (ex.: 22/10 às 19h a invocação caiu na
-    // infraestrutura do Google antes de começar). O sistema responde 200 mesmo quando o CNJ
-    // falha, então a repetição só acontece em falha de infraestrutura, não de fonte.
-    retryCount: 2,
-    minBackoffSeconds: 60,
-  },
-  async () => {
-    const url = `${APP_URL.value().replace(/\/$/, "")}/api/cron/sync`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${CRON_SECRET.value()}` },
-      signal: AbortSignal.timeout(330_000),
-    });
-    const texto = await res.text();
-    const corpo = texto.slice(0, 1000);
-    if (!res.ok) {
-      logger.error("Atualização automática falhou", { status: res.status, corpo });
-      throw new Error(`/api/cron/sync respondeu ${res.status}`);
-    }
-    // Registro de severidade ERROR é o que dispara o e-mail do alerta no Cloud Monitoring.
-    // Atraso não relança a função (não adianta repetir já: a fonte está fora), só avisa.
-    let atrasados = [];
-    try { atrasados = JSON.parse(texto).atrasados ?? []; } catch { /* resposta fora do formato: segue como concluída */ }
-    if (atrasados.length) {
-      logger.error(`Processos sem verificação há mais de 6 horas: ${atrasados.length}`, { atrasados, corpo });
-      return;
-    }
-    logger.info("Atualização automática concluída", { corpo });
-  },
-);
+const OPCOES = {
+  timeZone: "America/Sao_Paulo",
+  region: "us-central1",
+  secrets: [CRON_SECRET],
+  timeoutSeconds: 360,
+  memory: "256MiB",
+  // Até 2 novas tentativas se a CHAMADA falhar (ex.: 22/10 às 19h a invocação caiu na
+  // infraestrutura do Google antes de começar). O sistema responde 200 mesmo quando a fonte
+  // falha, então a repetição só acontece em falha de infraestrutura, não de fonte.
+  retryCount: 2,
+  minBackoffSeconds: 60,
+};
+
+async function chamarRota(caminho) {
+  const url = `${APP_URL.value().replace(/\/$/, "")}${caminho}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${CRON_SECRET.value()}` },
+    signal: AbortSignal.timeout(330_000),
+  });
+  const texto = await res.text();
+  const corpo = texto.slice(0, 1000);
+  if (!res.ok) {
+    logger.error(`Robô falhou em ${caminho}`, { status: res.status, corpo });
+    throw new Error(`${caminho} respondeu ${res.status}`);
+  }
+  let json = {};
+  try { json = JSON.parse(texto); } catch { /* resposta fora do formato: segue como concluída */ }
+  return { json, corpo };
+}
+
+exports.roboAndamentos = onSchedule({ ...OPCOES, schedule: "0,20,40 6,18 * * *" }, async () => {
+  const { json, corpo } = await chamarRota("/api/cron/sync");
+  if (json.nada) { logger.info("Robô de andamentos: nada pendente nesta janela"); return; }
+  // Registro ERROR fica nos logs para diagnóstico (o e-mail é só o resumo semanal).
+  // Atraso não relança a função (não adianta repetir já: a fonte está fora), só avisa.
+  const atrasados = json.atrasados ?? [];
+  if (atrasados.length) {
+    logger.error(`Processos sem verificação há mais de 14 horas: ${atrasados.length}`, { atrasados, corpo });
+    return;
+  }
+  logger.info("Robô de andamentos concluído", { corpo });
+});
+
+exports.roboPublicacoes = onSchedule({ ...OPCOES, schedule: "10,30,50 6,18 * * *" }, async () => {
+  const { json, corpo } = await chamarRota("/api/cron/publicacoes");
+  if (!json.pendentes) { logger.info("Robô de publicações: nada pendente nesta janela"); return; }
+  logger.info("Robô de publicações concluído", { corpo });
+});
 
 /**
  * Resumo semanal (segunda-feira, 8h de Brasília).

@@ -161,7 +161,7 @@ export async function sincronizarTudoAction(_: ActionState): Promise<ActionState
     const desde = ultimo ? Date.now() - new Date(ultimo.iniciado_em).getTime() : Infinity;
     if (desde < INTERVALO_MINIMO_MANUAL_MS) {
       const falta = Math.ceil((INTERVALO_MINIMO_MANUAL_MS - desde) / 60_000);
-      return { erro: `A última consulta aos tribunais começou há ${Math.floor(desde / 60_000)} min. Para não sobrecarregar a fonte do CNJ, aguarde mais ${falta} min — ou espere a rodada automática, que roda toda hora.` };
+      return { erro: `A última consulta aos tribunais começou há ${Math.floor(desde / 60_000)} min. Para não sobrecarregar a fonte do CNJ, aguarde mais ${falta} min — ou espere o robô automático (6h e 18h).` };
     }
     // Botão do painel: requisição interativa. As consultas agora vão uma de cada vez, com
     // pausa entre elas; o que não couber nestes 85 s fica para a rodada automática.

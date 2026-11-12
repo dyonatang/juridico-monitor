@@ -184,7 +184,7 @@ const MAX_POR_CONSULTA = 25;
 const PAUSA_ENTRE_LOTES_MS = 8_000;
 /** Depois de uma recusa por sobrecarga, espera mais antes de tentar o próximo lote. */
 const PAUSA_APOS_SOBRECARGA_MS = 25_000;
-/** Com tantas recusas seguidas na mesma rodada, para de insistir: o resto fica pra próxima hora. */
+/** Com tantas recusas seguidas na mesma rodada, para de insistir: o resto fica pra próxima passada. */
 const MAX_SOBRECARGAS_SEGUIDAS = 2;
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -201,7 +201,7 @@ function fatiar<T>(lista: T[], max: number): T[][] {
  * tribunais em paralelo, com até 100 números por consulta e novas tentativas em sequência
  * rápida — o CNJ respondia 429 ("muitas consultas") em quase toda rodada (36 de 36 em
  * 11-12/11). Agora: lotes de até 25, em fila, com pausa entre eles; os processos checados
- * há mais tempo vão primeiro, e o que não couber na rodada fica pra próxima hora. Falha de
+ * há mais tempo vão primeiro, e o que não couber na rodada fica pra próxima passada. Falha de
  * um lote vira UMA linha de erro no log, sem marcar cada processo como "com erro".
  */
 async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: number) {
@@ -308,8 +308,14 @@ async function sincronizarUmPorUm(processos: Processo[], prazoFinal: number) {
  * do ar ou lenta demais) fica como pendente no log e entra na próxima rodada. O log é sempre
  * fechado no `finally`, pra nunca ficar "em andamento" pra sempre.
  */
-/** Processo sem verificação bem-sucedida há mais que isso entra em "atrasados" e gera alerta. */
-export const LIMITE_ATRASO_H = 6;
+/**
+ * Processo sem verificação bem-sucedida há mais que isso entra em "atrasados" e gera alerta.
+ * v2.1: a consulta roda em duas janelas por dia (6h e 18h) — entre uma e outra são 12 h, então
+ * só é atraso de verdade quando uma janela inteira falhou para o processo.
+ */
+export const LIMITE_ATRASO_H = 14;
+/** Agendador: já verificado há menos que isso = feito nesta janela (passadas de 20 em 20 min). */
+const JANELA_MS = 2 * 3_600_000;
 
 export type ResultadoSincronizacao = {
   verificados: number;
@@ -320,12 +326,21 @@ export type ResultadoSincronizacao = {
   naoVerificados: string[];
   /** Dos não verificados, os que já estavam sem verificação há mais de LIMITE_ATRASO_H horas. */
   atrasados: string[];
+  /** Passada do agendador sem nada pendente nesta janela (não grava log). */
+  nada?: boolean;
 };
 
-export async function sincronizarTudo(opts: { orcamentoMs?: number } = {}): Promise<ResultadoSincronizacao> {
+export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesDaJanela?: boolean } = {}): Promise<ResultadoSincronizacao> {
   const prazoFinal = Date.now() + (opts.orcamentoMs ?? 240_000);
+  let processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
+  if (opts.soPendentesDaJanela) {
+    // Robô 6h/18h: a 1ª passada da janela pega todos; as seguintes (20 e 40 min depois) só
+    // o que a fonte recusou ou não coube. Sem nada pendente, não consulta nem grava log.
+    const limite = Date.now() - JANELA_MS;
+    processos = processos.filter((p) => !p.ultimo_check || new Date(p.ultimo_check).getTime() < limite);
+    if (!processos.length) return { verificados: 0, novas: 0, erros: [], pendentes: 0, naoVerificados: [], atrasados: [], nada: true };
+  }
   const logId = await store.iniciarSyncLog();
-  const processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
 
   let r: Omit<ResultadoSincronizacao, "atrasados"> = {
     verificados: 0, novas: 0, erros: [], pendentes: processos.length, naoVerificados: processos.map((p) => p.numero_formatado),

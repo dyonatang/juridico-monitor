@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { getApps, initializeApp, cert, applicationDefault, type App } from "firebase-admin/app";
 import { getFirestore, type Firestore, type Query, type DocumentSnapshot } from "firebase-admin/firestore";
-import type { Alerta, Arquivo, DocumentoMonitorado, Movimentacao, Processo } from "./types";
+import type { Alerta, Arquivo, DocumentoMonitorado, Movimentacao, Processo, Publicacao } from "./types";
 import { hashGravado } from "./movimento";
 import { hojeEmBrasilia } from "./format";
 
@@ -363,6 +363,55 @@ export function movimentacoesRecentes(desdeISO: string, limite = 300): Promise<M
   return lembrar(`recentes:${desde}:${limite}`, () =>
     all<Movimentacao>(fs().collection("movimentacoes").where("created_at", ">=", desde).orderBy("created_at", "desc").limit(limite)),
   );
+}
+
+// ---------------------------------------------------------------- Publicações (DJEN)
+export function listarPublicacoesDoProcesso(processoId: string): Promise<Publicacao[]> {
+  return lembrar(`pubs:${processoId}`, async () =>
+    (await all<Publicacao>(fs().collection("publicacoes").where("processo_id", "==", processoId)))
+      .sort((a, b) => b.data_disponibilizacao.localeCompare(a.data_disponibilizacao) || desc(a, b)),
+  );
+}
+/** Grava só as publicações que ainda não existem (id determinístico). Retorna as inéditas. */
+export async function inserirPublicacoes(itens: Omit<Publicacao, "created_at">[]): Promise<Publicacao[]> {
+  if (!itens.length) return [];
+  return gravando(async () => {
+    const db = fs();
+    const refs = itens.map((p) => db.collection("publicacoes").doc(p.id));
+    const existentes = new Set((await db.getAll(...refs)).filter((d) => d.exists).map((d) => d.id));
+    const novas = itens.filter((p) => !existentes.has(p.id)).map((p) => ({ ...p, created_at: agora() }));
+    for (let k = 0; k < novas.length; k += 400) {
+      const batch = db.batch();
+      for (const p of novas.slice(k, k + 400)) batch.set(db.collection("publicacoes").doc(p.id), limpar(p));
+      await batch.commit();
+    }
+    return novas;
+  });
+}
+export async function publicacoesSemExplicacao(desdeDia: string): Promise<Publicacao[]> {
+  const r = await all<Publicacao>(fs().collection("publicacoes").where("data_disponibilizacao", ">=", desdeDia));
+  return r.filter((p) => !p.explicado_em);
+}
+/** Grava a explicação na publicação e repete nos alertas dela. */
+export async function salvarExplicacoesPublicacoes(itens: { id: string; explicacao: string; o_que_fazer: string | null; prazo: string | null; importancia: "alta" | "media" | "baixa" }[]) {
+  if (!itens.length) return;
+  return gravando(async () => {
+    const db = fs();
+    const ts = agora();
+    const batch = db.batch();
+    for (const i of itens) {
+      batch.update(db.collection("publicacoes").doc(i.id), { explicacao: i.explicacao, o_que_fazer: i.o_que_fazer, prazo: i.prazo, importancia: i.importancia, explicado_em: ts });
+    }
+    for (let k = 0; k < itens.length; k += 30) {
+      const fatia = itens.slice(k, k + 30);
+      const alertas = await db.collection("alertas").where("publicacao_id", "in", fatia.map((i) => i.id)).get();
+      for (const a of alertas.docs) {
+        const i = fatia.find((x) => x.id === a.get("publicacao_id"))!;
+        batch.update(a.ref, { explicacao: i.explicacao, o_que_fazer: i.o_que_fazer, importancia: i.importancia });
+      }
+    }
+    await batch.commit();
+  });
 }
 
 // ---------------------------------------------------------------- Alertas

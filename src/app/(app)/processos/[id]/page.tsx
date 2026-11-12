@@ -24,6 +24,7 @@ import type { Movimentacao, PontoControvertido } from "@/lib/types";
 import { fasesDoRelatorio, ultimoRelatorio } from "@/lib/relatorio";
 import { FASES, FASE_ROTULO, type Fase } from "@/lib/fases";
 import { Colunas } from "@/components/graficos";
+import { semHtml } from "@/lib/djen";
 
 export const dynamic = "force-dynamic";
 
@@ -42,10 +43,11 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
   const { id } = await params;
   // O id da rota é o próprio número CNJ (id do documento) — dá pra buscar tudo de uma vez,
   // em vez de 4 idas e voltas seguidas ao banco (São Paulo) a partir do servidor (EUA).
-  const [p, movs, docs, arquivos, eu, rel] = await Promise.all([
+  const [p, movs, docs, arquivos, eu, rel, pubs] = await Promise.all([
     store.getProcesso(id), store.listarMovimentacoes(id), store.listarDocumentos(), store.listarArquivosDoProcesso(id),
     usuarioAtual().catch(() => null), // já lido pelo layout (cache da requisição)
     ultimoRelatorio().catch(() => null),
+    store.listarPublicacoesDoProcesso(id).catch(() => []),
   ]);
   if (!p) notFound();
   // Registro de auditoria depois que a página já foi enviada (não atrasa a abertura).
@@ -196,6 +198,41 @@ export default async function ProcessoDetalhe({ params }: { params: Promise<{ id
           <Input label="Novo ponto controvertido" name="texto" wide placeholder="ex.: se a requerida emitiu os cheques" />
           <div className="actions"><SubmitButton tone="secondary">Adicionar</SubmitButton></div>
         </form>
+      </Card>
+
+      <Card
+        title="Publicações no Diário"
+        hint={p.djen_check ? `${pubs.length} · consultado ${fmtDataHora(p.djen_check)} · robô às 6h e 18h` : "o robô consulta às 6h e às 18h"}
+      >
+        <div className="card-b">
+          {pubs.length === 0 && (
+            <p className="empty">
+              {p.djen_check ? "Nenhuma publicação deste processo no Diário de Justiça Eletrônico Nacional." : "Ainda não consultado — entra na próxima passada do robô."}
+              {p.djen_erro && <span className="hint"> Última tentativa: {p.djen_erro}</span>}
+            </p>
+          )}
+          <ul className="feed">
+            {pubs.slice(0, 8).map((x) => (
+              <li key={x.id} className="doc">
+                <span className="stripe" />
+                <div>
+                  <span className="t">{fmtData(x.data_disponibilizacao)} · {x.tipo_documento || x.tipo_comunicacao || "Comunicação"}</span>
+                  {x.orgao && <span className="sub"> · {x.orgao}</span>}
+                  {x.explicacao && <div className="explica">{x.explicacao}</div>}
+                  {x.prazo && <div className="explica fazer">⏱ Prazo no texto: {x.prazo}</div>}
+                  {x.o_que_fazer && <div className="explica fazer">→ {x.o_que_fazer}</div>}
+                  <details style={{ marginTop: 6 }}>
+                    <summary className="hint" style={{ cursor: "pointer" }}>Ler o texto publicado</summary>
+                    <div className="m" style={{ marginTop: 6, whiteSpace: "pre-line" }}>{semHtml(x.texto)}</div>
+                  </details>
+                </div>
+                <span />
+              </li>
+            ))}
+          </ul>
+          {pubs.length > 8 && <p className="hint" style={{ marginTop: 8 }}>e mais {pubs.length - 8} publicação(ões) mais antigas.</p>}
+          <p className="hint" style={{ marginTop: 8 }}>Fonte: Diário de Justiça Eletrônico Nacional (CNJ), consulta pública. A explicação é da IA; confirme prazos com a advogada.</p>
+        </div>
       </Card>
 
       {arquivos.length > 0 && (

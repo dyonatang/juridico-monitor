@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   const ok = compararSeguro(auth, `Bearer ${secret}`) || compararSeguro(daUrl, secret);
   if (!ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const resultado = await sincronizarTudo();
+  // Robô 6h/18h: cada passada só consulta o que ainda não foi verificado nesta janela.
+  const resultado = await sincronizarTudo({ soPendentesDaJanela: true });
   return NextResponse.json({ ok: true, ...resultado, em: new Date().toISOString() });
 }

@@ -27,8 +27,11 @@ const haQuanto = (iso: string) => {
 
 // Uma rodada nunca passa de ~4 min (orçamento do cron); aberta há mais que isso = foi interrompida.
 const LIMITE_RODADA_MS = 6 * 60_000;
-// O agendamento roda de hora em hora: 2h sem nenhuma rodada = provavelmente parado.
-const LIMITE_SEM_RODADA_H = 2;
+// v2.1: o robô roda às 6h e às 18h (passadas às :00, :20 e :40). Entre a última passada da
+// noite (18h40) e a primeira da manhã (6h) são ~11h20 — mais de 13h sem rodada = parado.
+const LIMITE_SEM_RODADA_H = 13;
+// Mesmo valor de LIMITE_ATRASO_H em lib/sync.ts (uma janela inteira sem verificar o processo).
+const ATRASO_H = 14;
 
 function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   if (!log) {
@@ -56,7 +59,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   // Sobrecarga do DataJud (429/504/resposta parcial/sem tempo) é passageira: em 14 dias até
   // 09/11/2026 o TJES recusou a consulta em 19% das rodadas, e 25 de 40 vezes voltou na hora
   // seguinte. Isso não é defeito do sistema — fica amarelo; vermelho só para o que pede ação.
-  const passageiro = (e: string) => /tentar de novo mais tarde|sem tempo para consultar nesta rodada/.test(e);
+  const passageiro = (e: string) => /tentar de novo mais tarde|sem tempo para consultar nesta rodada|fica para a próxima/.test(e);
   const soOscilacao = erros.length > 0 && erros.every(passageiro);
 
   let tom = "";
@@ -64,10 +67,10 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   let titulo = "Última atualização concluída sem erros";
   if (emAndamento) { tom = "warn"; icone = "🔄"; titulo = "Atualização em andamento"; }
   else if (interrompida) { tom = "bad"; icone = "⛔"; titulo = "A última atualização foi interrompida antes de terminar"; }
-  else if (soOscilacao) { tom = "warn"; icone = "🟡"; titulo = "Fonte do CNJ sobrecarregada nesta rodada — o restante fica para a próxima hora"; }
+  else if (soOscilacao) { tom = "warn"; icone = "🟡"; titulo = "Fonte do CNJ sobrecarregada nesta passada — o restante fica para a próxima"; }
   else if (erros.length) { tom = "bad"; icone = "⚠️"; titulo = `Última atualização terminou com ${erros.length} erro(s)`; }
   else if (pendentes) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
-  if (!emAndamento && atrasados.length) { tom = "bad"; icone = "⚠️"; titulo = `${atrasados.length} processo(s) sem verificação há mais de 6 horas`; }
+  if (!emAndamento && atrasados.length) { tom = "bad"; icone = "⚠️"; titulo = `${atrasados.length} processo(s) sem verificação há mais de ${ATRASO_H} horas`; }
 
   return (
     <div className={`sync-status ${tom}`}>
@@ -76,6 +79,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         <div className="titulo">{titulo}</div>
         <div className="linha">
           {emAndamento ? "Começou" : interrompida ? "Iniciada" : "Terminou"} {haQuanto(quando)} — {fmtDataHora(quando)}
+          <span className="hint"> · robô automático às 6h e às 18h (andamentos e publicações)</span>
         </div>
         {!emAndamento && !interrompida && (
           <div className="linha">
@@ -85,8 +89,8 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         )}
         {soOscilacao && !atrasados.length && !emAndamento && (
           <div className="linha">
-            Normal: a consulta ao CNJ agora é feita aos poucos, um lote por vez, com pausas — o que não coube ou foi recusado nesta rodada
-            entra primeiro na próxima hora. Nada é perdido: os andamentos desse intervalo chegam na verificação seguinte. Só preocupa se aparecer o aviso de 6 horas.
+            Normal: o robô consulta o CNJ aos poucos, um lote por vez, às 6h e às 18h, com mais duas passadas 20 e 40 minutos depois para o que
+            ficou de fora. Nada é perdido: os andamentos chegam na passada seguinte. Só preocupa se aparecer o aviso de {ATRASO_H} horas.
           </div>
         )}
         {interrompida && (
@@ -99,7 +103,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         )}
         {atrasados.length > 0 && (
           <div className="alerta">
-            Sem verificação há mais de 6 horas: {atrasados.join(", ")}. Se persistir, a fonte do CNJ pode estar fora do ar para esse tribunal.
+            Sem verificação há mais de {ATRASO_H} horas: {atrasados.join(", ")}. Se persistir, a fonte do CNJ pode estar fora do ar para esse tribunal.
           </div>
         )}
         {erros.length > 0 && (
@@ -319,7 +323,7 @@ export default async function Painel() {
                   <>
                     <span className="stripe" />
                     <div>
-                      <Pill tone={a.tipo === "erro" ? "bad" : a.tipo === "novo_processo" ? "warn" : a.tipo === "documento_importado" ? "accent" : "ok"}>{a.tipo === "nova_movimentacao" ? "andamento" : a.tipo === "novo_processo" ? "processo novo" : a.tipo === "documento_importado" ? "documento" : "erro"}</Pill>{" "}
+                      <Pill tone={a.tipo === "erro" ? "bad" : a.tipo === "novo_processo" ? "warn" : a.tipo === "documento_importado" || a.tipo === "publicacao" ? "accent" : "ok"}>{a.tipo === "nova_movimentacao" ? "andamento" : a.tipo === "novo_processo" ? "processo novo" : a.tipo === "documento_importado" ? "documento" : a.tipo === "publicacao" ? "publicação" : "erro"}</Pill>{" "}
                       {a.processo_id ? (
                         <Link href={`/processos/${a.processo_id}`} className="t link">{a.titulo}</Link>
                       ) : (
@@ -334,7 +338,7 @@ export default async function Painel() {
                     </form>
                   </>
                 );
-                const cls = a.tipo === "novo_processo" ? "novo" : a.tipo === "erro" ? "erro" : a.tipo === "documento_importado" ? "doc" : "";
+                const cls = a.tipo === "novo_processo" ? "novo" : a.tipo === "erro" ? "erro" : a.tipo === "documento_importado" || a.tipo === "publicacao" ? "doc" : "";
                 return a.processo_id ? (
                   <ItemLink key={a.id} href={`/processos/${a.processo_id}`} className={cls}>{linha}</ItemLink>
                 ) : (
