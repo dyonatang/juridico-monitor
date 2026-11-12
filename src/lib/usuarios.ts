@@ -43,24 +43,51 @@ export async function getUsuario(login: string): Promise<Usuario | null> {
   return u && structuredClone(u);
 }
 
-export async function criarUsuario(input: { nome: string; login: string; senha: string; papel: Papel }): Promise<Usuario> {
+/** Usuário pelo e-mail cadastrado (minúsculas). */
+export async function getUsuarioPorEmail(email: string): Promise<Usuario | null> {
+  const e = email.trim().toLowerCase();
+  if (!e.includes("@")) return null;
+  const r = await store.fs().collection("usuarios").where("email", "==", e).limit(1).get();
+  return r.empty ? null : ({ id: r.docs[0].id, ...(r.docs[0].data() as object) } as Usuario);
+}
+
+/**
+ * Aceita login ou e-mail no campo "Usuário": com @, procura o e-mail cadastrado e, se não
+ * achar, a parte antes do @ (ex.: fulano@empresa.com.br → fulano).
+ */
+export async function resolverUsuario(identificador: string): Promise<Usuario | null> {
+  const id = identificador.trim();
+  if (!id.includes("@")) return getUsuario(id).catch(() => null);
+  return (await getUsuarioPorEmail(id).catch(() => null)) ?? (await getUsuario(id.split("@")[0]).catch(() => null));
+}
+
+const emailValido = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+export async function criarUsuario(input: { nome: string; login: string; senha: string; papel: Papel; email?: string | null }): Promise<Usuario> {
   const login = normalizarLogin(input.login);
   const nome = input.nome.trim();
   if (!nome) throw new Error("Nome é obrigatório");
   if (login.length < 3) throw new Error("Login deve ter ao menos 3 letras/números (sem espaços)");
   if (input.senha.length < 6) throw new Error("Senha deve ter ao menos 6 caracteres");
+  const email = input.email?.trim().toLowerCase() || null;
+  if (email && !emailValido(email)) throw new Error("E-mail inválido");
   const ref = store.fs().collection("usuarios").doc(login);
   if ((await ref.get()).exists) throw new Error("Já existe um usuário com esse login");
-  const u: Usuario = { id: login, login, nome, papel: input.papel, senha_hash: hashSenha(input.senha), ativo: true, ultimo_acesso: null, created_at: store.agora() };
+  const u: Usuario = { id: login, login, nome, papel: input.papel, senha_hash: hashSenha(input.senha), email, ativo: true, ultimo_acesso: null, created_at: store.agora() };
   const { id: _id, ...dados } = u;
   await ref.set(dados);
   store.limparCache();
   return u;
 }
 
-export async function atualizarUsuario(login: string, patch: Partial<Pick<Usuario, "nome" | "papel" | "ativo" | "ultimo_acesso">> & { senha?: string }) {
+export async function atualizarUsuario(login: string, patch: Partial<Pick<Usuario, "nome" | "papel" | "ativo" | "ultimo_acesso" | "email">> & { senha?: string }) {
   const { senha, ...resto } = patch;
   const dados: Record<string, unknown> = { ...resto };
+  if (typeof resto.email === "string") {
+    const e = resto.email.trim().toLowerCase();
+    if (e && !emailValido(e)) throw new Error("E-mail inválido");
+    dados.email = e || null;
+  }
   if (senha !== undefined) {
     if (senha.length < 6) throw new Error("Senha deve ter ao menos 6 caracteres");
     dados.senha_hash = hashSenha(senha);
@@ -101,7 +128,7 @@ async function registrarFalha(l: string) {
   await ref.set({ falhas, ultima_tentativa: store.agora(), bloqueado_ate }, { merge: true });
 }
 
-async function limparFalhas(l: string) {
+export async function limparFalhas(l: string) {
   await store.fs().collection("login_tentativas").doc(l).delete().catch(() => undefined);
 }
 
@@ -112,10 +139,10 @@ async function limparFalhas(l: string) {
  * um login conhecido, já que a senha de emergência do .env pode ser curta).
  */
 export async function autenticar(login: string, senha: string): Promise<Usuario | null> {
-  const l = normalizarLogin(login);
+  const u = await resolverUsuario(login);
+  const l = u?.login ?? normalizarLogin(login);
   if (await loginBloqueado(l)) throw new Error("Muitas tentativas com esse usuário. Aguarde alguns minutos e tente novamente.");
 
-  const u = await getUsuario(l).catch(() => null);
   if (u) {
     if (!u.ativo || !conferirSenha(senha, u.senha_hash)) {
       await registrarFalha(l);

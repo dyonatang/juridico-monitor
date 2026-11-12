@@ -19,7 +19,8 @@ export async function proxy(req: NextRequest) {
     if (pathname === "/login") return NextResponse.redirect(new URL("/", req.url));
     return NextResponse.next();
   }
-  if (pathname === "/login") return NextResponse.next();
+  // Login e "Esqueci minha senha" (/login/esqueci, /login/redefinir) abrem sem sessão.
+  if (pathname === "/login" || pathname.startsWith("/login/")) return NextResponse.next();
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const login = new URL("/login", req.url);
   if (pathname !== "/") login.searchParams.set("next", pathname + search);

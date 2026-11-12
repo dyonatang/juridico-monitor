@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { listarUsuarios, usuarioAtual } from "@/lib/usuarios";
 import { fmtDataHora } from "@/lib/format";
 import { ActionForm, Card, Input, Select, Pill, SubmitButton } from "@/components/ui";
-import { alternarUsuarioAction, criarUsuarioAction, excluirUsuarioAction, redefinirSenhaAction } from "@/app/actions";
+import { alternarUsuarioAction, criarUsuarioAction, excluirUsuarioAction, redefinirSenhaAction, salvarEmailUsuarioAction } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,7 @@ export default async function Usuarios() {
         <ActionForm action={criarUsuarioAction} submitLabel="Cadastrar usuário">
           <Input label="Nome *" name="nome" required placeholder="Maria Silva" />
           <Input label="Login *" name="login" required placeholder="maria" autoCapitalize="none" />
+          <Input label="E-mail (para “Esqueci minha senha”)" name="email" type="email" placeholder="maria@empresa.com.br" autoCapitalize="none" />
           <Input label="Senha *" name="senha" type="password" required minLength={6} placeholder="mínimo 6 caracteres" />
           <Select label="Perfil *" name="papel" defaultValue="leitura">
             <option value="leitura">Leitura (só consulta)</option>
@@ -34,7 +35,7 @@ export default async function Usuarios() {
       <Card title="Cadastrados" hint={String(usuarios.length)}>
         <div className="tablewrap">
           <table>
-            <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Último acesso</th><th>Status</th><th>Nova senha</th><th></th></tr></thead>
+            <thead><tr><th>Nome</th><th>Login</th><th>E-mail</th><th>Perfil</th><th>Último acesso</th><th>Status</th><th>Nova senha</th><th></th></tr></thead>
             <tbody>
               {usuarios.map((u) => {
                 const souEu = u.login === eu.login;
@@ -42,6 +43,12 @@ export default async function Usuarios() {
                   <tr key={u.id} className={u.ativo ? "" : "off"}>
                     <td><b>{u.nome}</b>{souEu && <span className="sub"> (você)</span>}</td>
                     <td className="mono">{u.login}</td>
+                    <td>
+                      <form action={salvarEmailUsuarioAction.bind(null, u.login)} style={{ display: "flex", gap: 6 }}>
+                        <input name="email" type="email" defaultValue={u.email ?? ""} placeholder="sem e-mail" aria-label={`E-mail de ${u.nome}`} style={{ width: 210, font: "inherit", fontSize: 12.5, border: "1px solid var(--line-strong)", borderRadius: 6, padding: "4px 8px", background: "var(--surface)", color: "var(--ink)" }} />
+                        <SubmitButton tone="sm">Salvar</SubmitButton>
+                      </form>
+                    </td>
                     <td>{u.papel === "admin" ? <Pill tone="accent">administrador</Pill> : <Pill>leitura</Pill>}</td>
                     <td className="sub">{fmtDataHora(u.ultimo_acesso)}</td>
                     <td>{u.ativo ? <Pill tone="ok">ativo</Pill> : <Pill tone="warn">bloqueado</Pill>}</td>
@@ -62,7 +69,7 @@ export default async function Usuarios() {
                   </tr>
                 );
               })}
-              {usuarios.length === 0 && <tr><td colSpan={7} className="empty">Nenhum usuário no banco ainda — o acesso atual vem do .env. Cadastre-se aqui para ter um usuário definitivo.</td></tr>}
+              {usuarios.length === 0 && <tr><td colSpan={8} className="empty">Nenhum usuário no banco ainda — o acesso atual vem do .env. Cadastre-se aqui para ter um usuário definitivo.</td></tr>}
             </tbody>
           </table>
         </div>

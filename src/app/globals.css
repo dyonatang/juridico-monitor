@@ -568,3 +568,17 @@ td .link, td a.mono, .fase-grupo li a, .passos .det a, .destaque > a, .processo-
   .busca-btn { padding: 0 12px; }
   .main { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
 }
+
+/* ---------- Login: olhinho da senha e links (12/11/2026) ---------- */
+.senha-campo { position: relative; display: block; }
+.senha-campo input { width: 100%; padding-right: 46px; }
+.senha-olho {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-radius: 8px; color: var(--ink-3); cursor: pointer;
+  touch-action: manipulation;
+}
+.senha-olho:hover, .senha-olho:focus-visible { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.login-link { align-self: center; font-size: 13.5px; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; padding: 6px 4px; }
+.login-link:hover { color: var(--ink); }
+.login-form .msg-ok { line-height: 1.5; }

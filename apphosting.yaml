@@ -37,6 +37,13 @@ env:
     availability: [ RUNTIME ]
   - variable: ANTHROPIC_API_KEY
     secret: ANTHROPIC_API_KEY
+  # "Esqueci minha senha" (link enviado pelo Firebase Authentication — src/lib/recuperacao.ts).
+  # Chave web do app "juridico" (firebase apps:sdkconfig). Descomente depois de criar o segredo:
+  #   firebase apphosting:secrets:set FIREBASE_WEB_API_KEY
+  #   firebase apphosting:secrets:grantaccess FIREBASE_WEB_API_KEY --backend juridico
+  # - variable: FIREBASE_WEB_API_KEY
+  #   secret: FIREBASE_WEB_API_KEY
+
   # Leitura de PDF por IA (recomendado) — descomente depois de criar o segredo:
   #   firebase apphosting:secrets:set ANTHROPIC_API_KEY
   # - variable: ANTHROPIC_API_KEY

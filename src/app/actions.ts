@@ -237,7 +237,7 @@ export async function criarUsuarioAction(_: ActionState, fd: FormData): Promise<
   try {
     const eu = await exigirAdmin();
     const papel = (str(fd, "papel") === "admin" ? "admin" : "leitura") as Papel;
-    const u = await criarUsuario({ nome: str(fd, "nome"), login: str(fd, "login"), senha: str(fd, "senha"), papel });
+    const u = await criarUsuario({ nome: str(fd, "nome"), login: str(fd, "login"), senha: str(fd, "senha"), papel, email: str(fd, "email") || null });
     await registrarAuditoria("criou_usuario", { tipo: "usuario", id: u.login, rotulo: u.nome }, eu.login);
     revalidatePath("/usuarios");
     return { ok: `Usuário ${u.nome} (${u.login}) cadastrado.` };
@@ -265,6 +265,14 @@ export async function excluirUsuarioAction(login: string) {
   if (alvo?.papel === "admin" && alvo.ativo && (await contarAdmins()) <= 1) throw new Error("Não é possível excluir o único administrador.");
   await excluirUsuario(login);
   await registrarAuditoria("excluiu_usuario", { tipo: "usuario", id: login, rotulo: alvo?.nome ?? login }, eu.login);
+  revalidatePath("/usuarios");
+}
+
+/** E-mail do usuário (usado no "Esqueci minha senha" e para entrar digitando o e-mail). */
+export async function salvarEmailUsuarioAction(login: string, fd: FormData) {
+  const eu = await exigirAdmin();
+  await atualizarUsuario(login, { email: str(fd, "email") });
+  await registrarAuditoria("alterou_usuario", { tipo: "usuario", id: login, rotulo: "e-mail" }, eu.login);
   revalidatePath("/usuarios");
 }
 

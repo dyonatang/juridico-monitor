@@ -133,6 +133,8 @@ export type Usuario = {
   nome: string;
   papel: Papel;
   senha_hash: string | null;
+  /** E-mail para o "Esqueci minha senha" (link enviado pelo Firebase) e para entrar com e-mail. */
+  email?: string | null;
   ativo: boolean;
   ultimo_acesso: string | null;
   created_at: string;
