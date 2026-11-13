@@ -28,6 +28,10 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Ignora APIs com token próprio, internos do Next e arquivos estáticos (ícones, manifest etc.)
-  matcher: ["/((?!api/mcp|api/cron|api/webhooks|api/ingestao|_next/|.*\\..*).*)"],
+  // Ignora APIs com token próprio, internos do Next e os arquivos públicos da pasta public/
+  // (listados um a um). Antes era "qualquer endereço com ponto", o que deixava passar sem
+  // login endereços como /processos/x.y — as telas tinham segunda trava, mas os botões não.
+  matcher: [
+    "/((?!api/mcp|api/cron|api/webhooks|api/ingestao|_next/|favicon\\.png$|favicon\\.ico$|icon\\.svg$|icon-192\\.png$|icon-512\\.png$|icon-512-maskable\\.png$|apple-touch-icon\\.png$|manifest\\.webmanifest$|robots\\.txt$).*)",
+  ],
 };

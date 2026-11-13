@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import * as store from "@/lib/store";
 import { cadastrarDocumento, cadastrarProcesso, marcarAlertasLidos, ativarMonitoramentoDocumento } from "@/lib/repo";
 import { sincronizarProcesso } from "@/lib/sync";
-import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, getUsuario, usuarioAtual } from "@/lib/usuarios";
+import { atualizarUsuario, contarAdmins, criarUsuario, excluirUsuario, exigirAdmin, exigirLogin, getUsuario, usuarioAtual } from "@/lib/usuarios";
+import { cookies } from "next/headers";
+import { COOKIE_SESSAO, criarSessao } from "@/lib/auth";
 import { registrarAuditoria } from "@/lib/auditoria";
 import type { Papel, PontoControvertido, Prazo } from "@/lib/types";
 import { apagarArquivo, salvarArquivo } from "@/lib/storage";
@@ -147,6 +149,7 @@ export async function excluirPrazoAction(id: string, prazoId: string) {
 }
 
 export async function sincronizarProcessoAction(id: string) {
+  await exigirLogin();
   const p = await store.getProcesso(id);
   if (p) await sincronizarProcesso(p).catch(() => null);
   revalidatePath(`/processos/${id}`);
@@ -155,6 +158,7 @@ export async function sincronizarProcessoAction(id: string) {
 
 export async function sincronizarTudoAction(_: ActionState): Promise<ActionState> {
   try {
+    await exigirLogin();
     // Uma rodada logo depois da outra é justamente o que faz o CNJ recusar (429): o botão só
     // consulta se a última rodada (automática ou manual) começou há mais de 10 minutos.
     const ultimo = await store.ultimoSyncLog();
@@ -183,6 +187,7 @@ export async function reativarMonitoramentoAction(id: string) {
 }
 
 export async function marcarLidoAction(id?: string) {
+  await exigirLogin();
   await marcarAlertasLidos(id ? [id] : undefined);
   tudo();
 }
@@ -280,6 +285,13 @@ export async function redefinirSenhaAction(login: string, fd: FormData) {
   const eu = await exigirAdmin();
   await atualizarUsuario(login, { senha: str(fd, "senha") });
   await registrarAuditoria("redefiniu_senha", { tipo: "usuario", id: login }, eu.login);
+  // Trocar a senha derruba todos os logins daquele usuário. Se foi a própria senha, este
+  // aparelho recebe um login novo na hora (os outros aparelhos precisam entrar de novo).
+  if (login === eu.login) {
+    const novo = await getUsuario(login);
+    const { valor, expira } = await criarSessao(eu.login, novo?.sessao_versao ?? 0);
+    (await cookies()).set(COOKIE_SESSAO, valor, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", expires: expira, path: "/" });
+  }
   revalidatePath("/usuarios");
 }
 

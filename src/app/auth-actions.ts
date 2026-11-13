@@ -1,29 +1,50 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { COOKIE_SESSAO, COOKIE_SESSAO_ANTIGO, criarSessao } from "@/lib/auth";
 import { autenticar } from "@/lib/usuarios";
 import { pedirLinkRecuperacao, redefinirComLink } from "@/lib/recuperacao";
+import { registrarAuditoria } from "@/lib/auditoria";
 
 export type LoginState = { erro?: string } | undefined;
+
+/**
+ * De onde veio o pedido, para o log de auditoria. O 1º endereço do X-Forwarded-For é o que o
+ * Google recebeu do navegador; quem quiser pode forjar esse cabeçalho, então serve como pista,
+ * não como prova.
+ */
+async function origemDoPedido(): Promise<string> {
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim().slice(0, 64) || "?";
+  const ua = (h.get("user-agent") ?? "").replace(/\s+/g, " ").slice(0, 120);
+  return `IP ${ip}${ua ? ` · ${ua}` : ""}`;
+}
+const loginDigitado = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9._@-]/g, "").slice(0, 60) || "(vazio)";
 
 export async function loginAction(_: LoginState, fd: FormData): Promise<LoginState> {
   const usuario = String(fd.get("usuario") ?? "").trim();
   const senha = String(fd.get("senha") ?? "");
   const next = String(fd.get("next") ?? "/");
+  const origem = await origemDoPedido();
   let u;
   try {
     u = await autenticar(usuario, senha);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { erro: msg.startsWith("Muitas tentativas") ? msg : `Falha ao consultar usuários: ${msg}` };
+    if (msg.startsWith("Muitas tentativas")) {
+      await registrarAuditoria("login_bloqueado", { tipo: "login", id: loginDigitado(usuario), rotulo: origem }, "visitante");
+      return { erro: msg };
+    }
+    return { erro: `Falha ao consultar usuários: ${msg}` };
   }
   if (!u) {
+    await registrarAuditoria("errou_senha", { tipo: "login", id: loginDigitado(usuario), rotulo: origem }, "visitante");
     await new Promise((r) => setTimeout(r, 600)); // desacelera tentativas
     return { erro: "Usuário ou senha incorretos." };
   }
-  const { valor, expira } = await criarSessao(u.login);
+  await registrarAuditoria("entrou", { tipo: "login", id: u.login, rotulo: origem }, u.login);
+  const { valor, expira } = await criarSessao(u.login, u.sessao_versao ?? 0);
   (await cookies()).set(COOKIE_SESSAO, valor, {
     httpOnly: true,
     sameSite: "lax",

@@ -138,6 +138,8 @@ export type Usuario = {
   ativo: boolean;
   ultimo_acesso: string | null;
   created_at: string;
+  /** Sobe a cada troca de senha: derruba os logins abertos antes (ver lib/auth.ts). */
+  sessao_versao?: number;
 };
 
 /**

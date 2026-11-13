@@ -22,6 +22,9 @@ const ACAO_LABEL: Record<string, string> = {
   excluiu_usuario: "Excluiu usuário",
   alterou_usuario: "Alterou usuário",
   redefiniu_senha: "Redefiniu senha",
+  entrou: "Entrou no sistema",
+  errou_senha: "Tentou entrar (senha errada)",
+  login_bloqueado: "Tentou entrar (usuário bloqueado)",
 };
 
 export default async function Auditoria() {

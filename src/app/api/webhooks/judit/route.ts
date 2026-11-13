@@ -12,7 +12,10 @@ export const dynamic = "force-dynamic";
  * { event_type, reference_type: "tracking", reference_id: <tracking_id>, response_type: "lawsuit", response_data: {...} }
  */
 export async function POST(req: NextRequest) {
-  if (process.env.WEBHOOK_SECRET && !compararSeguro(req.nextUrl.searchParams.get("secret") ?? "", process.env.WEBHOOK_SECRET)) {
+  // Sem WEBHOOK_SECRET a rota fica fechada (antes ficava aberta para qualquer um).
+  const segredo = process.env.WEBHOOK_SECRET;
+  if (!segredo) return NextResponse.json({ error: "WEBHOOK_SECRET não configurado" }, { status: 503 });
+  if (!compararSeguro(req.nextUrl.searchParams.get("secret") ?? "", segredo)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = await req.json().catch(() => null);

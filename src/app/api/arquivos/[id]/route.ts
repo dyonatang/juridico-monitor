@@ -1,7 +1,6 @@
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import * as store from "@/lib/store";
-import { lerSessao, validarSessao } from "@/lib/auth";
+import { usuarioAtual } from "@/lib/usuarios";
 import { registrarAuditoria } from "@/lib/auditoria";
 import { lerArquivo } from "@/lib/storage";
 
@@ -12,11 +11,13 @@ export const dynamic = "force-dynamic";
  * tudo fora de /api/mcp|cron|webhooks|ingestao), mas essa rota serve documentos
  * potencialmente sensíveis — confere a sessão de novo aqui, em profundidade,
  * pra não depender só do regex do matcher do proxy nunca ficar desatualizado.
+ * Usa usuarioAtual(): além da assinatura, confere no banco se o usuário continua ativo e se
+ * a senha não foi trocada depois deste login.
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   let usuario: string | null = null;
   if (process.env.DASHBOARD_USER && process.env.DASHBOARD_PASSWORD) {
-    usuario = await validarSessao(lerSessao(await cookies()));
+    usuario = (await usuarioAtual())?.login ?? null;
     if (!usuario) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { id } = await params;

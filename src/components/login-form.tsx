@@ -69,7 +69,7 @@ export function RedefinirForm({ u, oobCode }: { u: string; oobCode: string }) {
     <form action={action} className="login-form">
       <input type="hidden" name="u" value={u} />
       <input type="hidden" name="oobCode" value={oobCode} />
-      <CampoSenha rotulo="Nova senha (mínimo 6 caracteres)" name="senha" autoComplete="new-password" autoFocus />
+      <CampoSenha rotulo="Nova senha (mínimo 10 caracteres)" name="senha" autoComplete="new-password" autoFocus />
       <CampoSenha rotulo="Repita a nova senha" name="confirmar" autoComplete="new-password" />
       {state?.erro && <div className="msg-err" role="alert">{state.erro}</div>}
       <SubmitButton>Salvar nova senha</SubmitButton>

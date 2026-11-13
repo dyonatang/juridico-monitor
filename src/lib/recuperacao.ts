@@ -14,7 +14,7 @@
  */
 import { getAuth } from "firebase-admin/auth";
 import * as store from "./store";
-import { atualizarUsuario, getUsuario, limparFalhas, resolverUsuario } from "./usuarios";
+import { atualizarUsuario, getUsuario, limparFalhas, resolverUsuario, validarSenhaNova } from "./usuarios";
 import { registrarAuditoria } from "./auditoria";
 
 const chave = () => process.env.FIREBASE_WEB_API_KEY || "";
@@ -60,7 +60,7 @@ export async function pedirLinkRecuperacao(identificador: string): Promise<void>
 /** Confere o código do link e grava a nova senha. */
 export async function redefinirComLink(login: string, oobCode: string, novaSenha: string): Promise<void> {
   const invalido = "Link inválido ou expirado. Peça um novo em \"Esqueci minha senha\".";
-  if (novaSenha.length < 6) throw new Error("A senha deve ter ao menos 6 caracteres.");
+  validarSenhaNova(novaSenha);
   const u = await getUsuario(login).catch(() => null);
   if (!u || !u.ativo || !u.email || !oobCode) throw new Error(invalido);
 

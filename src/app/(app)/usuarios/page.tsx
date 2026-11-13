@@ -24,7 +24,7 @@ export default async function Usuarios() {
           <Input label="Nome *" name="nome" required placeholder="Maria Silva" />
           <Input label="Login *" name="login" required placeholder="maria" autoCapitalize="none" />
           <Input label="E-mail (para “Esqueci minha senha”)" name="email" type="email" placeholder="maria@empresa.com.br" autoCapitalize="none" />
-          <Input label="Senha *" name="senha" type="password" required minLength={6} placeholder="mínimo 6 caracteres" />
+          <Input label="Senha *" name="senha" type="password" required minLength={10} placeholder="mínimo 10 caracteres" />
           <Select label="Perfil *" name="papel" defaultValue="leitura">
             <option value="leitura">Leitura (só consulta)</option>
             <option value="admin">Administrador</option>
@@ -54,7 +54,7 @@ export default async function Usuarios() {
                     <td>{u.ativo ? <Pill tone="ok">ativo</Pill> : <Pill tone="warn">bloqueado</Pill>}</td>
                     <td>
                       <form action={redefinirSenhaAction.bind(null, u.login)} style={{ display: "flex", gap: 6 }}>
-                        <input name="senha" type="password" minLength={6} placeholder="nova senha" required style={{ width: 130, font: "inherit", fontSize: 12.5, border: "1px solid var(--line-strong)", borderRadius: 6, padding: "4px 8px", background: "var(--surface)", color: "var(--ink)" }} />
+                        <input name="senha" type="password" minLength={10} placeholder="nova senha (10+)" required style={{ width: 130, font: "inherit", fontSize: 12.5, border: "1px solid var(--line-strong)", borderRadius: 6, padding: "4px 8px", background: "var(--surface)", color: "var(--ink)" }} />
                         <SubmitButton tone="sm">Trocar</SubmitButton>
                       </form>
                     </td>

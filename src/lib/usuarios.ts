@@ -5,12 +5,19 @@
  */
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { cache } from "react";
+import { FieldValue } from "firebase-admin/firestore";
 import { cookies } from "next/headers";
 import * as store from "./store";
 import { credenciaisValidas, lerSessao, validarSessao } from "./auth";
 import type { Usuario, Papel } from "./types";
 
 const normalizarLogin = (l: string) => l.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "");
+
+/** Tamanho mínimo de senha nova (as senhas já cadastradas continuam valendo). */
+export const SENHA_MINIMA = 10;
+export function validarSenhaNova(senha: string) {
+  if (senha.length < SENHA_MINIMA) throw new Error(`A senha deve ter ao menos ${SENHA_MINIMA} caracteres.`);
+}
 
 export function hashSenha(senha: string) {
   const salt = randomBytes(16).toString("hex");
@@ -68,7 +75,7 @@ export async function criarUsuario(input: { nome: string; login: string; senha: 
   const nome = input.nome.trim();
   if (!nome) throw new Error("Nome é obrigatório");
   if (login.length < 3) throw new Error("Login deve ter ao menos 3 letras/números (sem espaços)");
-  if (input.senha.length < 6) throw new Error("Senha deve ter ao menos 6 caracteres");
+  validarSenhaNova(input.senha);
   const email = input.email?.trim().toLowerCase() || null;
   if (email && !emailValido(email)) throw new Error("E-mail inválido");
   const ref = store.fs().collection("usuarios").doc(login);
@@ -89,8 +96,10 @@ export async function atualizarUsuario(login: string, patch: Partial<Pick<Usuari
     dados.email = e || null;
   }
   if (senha !== undefined) {
-    if (senha.length < 6) throw new Error("Senha deve ter ao menos 6 caracteres");
+    validarSenhaNova(senha);
     dados.senha_hash = hashSenha(senha);
+    // Derruba todos os logins abertos com a senha anterior (em qualquer aparelho).
+    dados.sessao_versao = FieldValue.increment(1);
   }
   await store.fs().collection("usuarios").doc(normalizarLogin(login)).update(dados);
   store.limparCache();
@@ -169,16 +178,25 @@ export async function autenticar(login: string, senha: string): Promise<Usuario 
 /** Usuário da sessão atual (server-side). null se não logado. */
 /** Memorizado por requisição (React cache): layout, menu, auditoria e página fazem 1 leitura só. */
 export const usuarioAtual = cache(async function usuarioAtual(): Promise<Usuario | null> {
-  const login = await validarSessao(lerSessao(await cookies()));
-  if (!login) return null;
+  const sessao = await validarSessao(lerSessao(await cookies()));
+  if (!sessao) return null;
+  const { login, versao } = sessao;
   const u = await getUsuario(login).catch(() => null);
-  if (u) return u.ativo ? u : null;
-  // sessão antiga do usuário do .env (antes de existir no banco)
-  if (process.env.DASHBOARD_USER && login.toLowerCase() === process.env.DASHBOARD_USER.toLowerCase()) {
+  // Desativado, ou a senha foi trocada depois deste login → a sessão não vale mais.
+  if (u) return u.ativo && (u.sessao_versao ?? 0) === versao ? u : null;
+  // sessão do usuário do .env (antes de existir no banco)
+  if (versao === 0 && process.env.DASHBOARD_USER && login.toLowerCase() === process.env.DASHBOARD_USER.toLowerCase()) {
     return { id: login, login, nome: login, papel: "admin", senha_hash: null, ativo: true, ultimo_acesso: null, created_at: "" };
   }
   return null;
 });
+
+/** Exige um login válido (qualquer papel). Para ações que não alteram cadastro. */
+export async function exigirLogin(): Promise<Usuario> {
+  const u = await usuarioAtual();
+  if (!u) throw new Error("Sessão expirada. Entre novamente.");
+  return u;
+}
 
 export async function exigirAdmin(): Promise<Usuario> {
   const u = await usuarioAtual();

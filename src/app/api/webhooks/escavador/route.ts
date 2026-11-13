@@ -13,7 +13,10 @@ export const dynamic = "force-dynamic";
  * presentes no JSON e re-consulta cada um via API.
  */
 export async function POST(req: NextRequest) {
-  if (process.env.WEBHOOK_SECRET && !compararSeguro(req.nextUrl.searchParams.get("secret") ?? "", process.env.WEBHOOK_SECRET)) {
+  // Sem WEBHOOK_SECRET a rota fica fechada (antes ficava aberta para qualquer um).
+  const segredo = process.env.WEBHOOK_SECRET;
+  if (!segredo) return NextResponse.json({ error: "WEBHOOK_SECRET não configurado" }, { status: 503 });
+  if (!compararSeguro(req.nextUrl.searchParams.get("secret") ?? "", segredo)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const texto = await req.text();
