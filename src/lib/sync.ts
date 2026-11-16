@@ -186,6 +186,8 @@ const PAUSA_ENTRE_LOTES_MS = 8_000;
 const PAUSA_APOS_SOBRECARGA_MS = 25_000;
 /** Com tantas recusas seguidas na mesma rodada, para de insistir: o resto fica pra próxima passada. */
 const MAX_SOBRECARGAS_SEGUIDAS = 2;
+/** Robô da madrugada: pausa entre uma consulta (de um processo só) e a próxima. */
+const PAUSA_UM_POR_VEZ_MS = 15_000;
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -204,7 +206,12 @@ function fatiar<T>(lista: T[], max: number): T[][] {
  * há mais tempo vão primeiro, e o que não couber na rodada fica pra próxima passada. Falha de
  * um lote vira UMA linha de erro no log, sem marcar cada processo como "com erro".
  */
-async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: number) {
+async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: number, opts: { umPorVez?: boolean } = {}) {
+  // Robô da madrugada (v2.2): um processo por consulta, pausa maior e desiste na 1ª recusa —
+  // há 36 passadas entre 4h e 10h, então não vale insistir com a fonte sobrecarregada.
+  const maxPorConsulta = opts.umPorVez ? 1 : MAX_POR_CONSULTA;
+  const pausa = opts.umPorVez ? PAUSA_UM_POR_VEZ_MS : PAUSA_ENTRE_LOTES_MS;
+  const maxSobrecargas = opts.umPorVez ? 1 : MAX_SOBRECARGAS_SEGUIDAS;
   let verificados = 0;
   let novas = 0;
   let pendentes = 0;
@@ -222,7 +229,7 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
   // `processos` já vem do checado há mais tempo para o mais recente: o lote com o processo
   // mais "velho" vai primeiro, então quem ficou de fora numa rodada é o primeiro da próxima.
   const lotes = [...grupos]
-    .flatMap(([alias, lista]) => fatiar(lista, MAX_POR_CONSULTA).map((parte) => [alias, parte] as const))
+    .flatMap(([alias, lista]) => fatiar(lista, maxPorConsulta).map((parte) => [alias, parte] as const))
     .sort(([, a], [, b]) => (a[0].ultimo_check ?? "").localeCompare(b[0].ultimo_check ?? ""));
 
   const deixarParaDepois = (alias: string, lista: readonly Processo[], motivo: string) => {
@@ -234,16 +241,22 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
   let sobrecargasSeguidas = 0;
   for (let i = 0; i < lotes.length; i++) {
     const [alias, lista] = lotes[i];
-    if (i > 0) await espera(sobrecargasSeguidas ? PAUSA_APOS_SOBRECARGA_MS : PAUSA_ENTRE_LOTES_MS);
-    if (sobrecargasSeguidas >= MAX_SOBRECARGAS_SEGUIDAS || prazoFinal - Date.now() < 15_000) {
+    if (i > 0) await espera(sobrecargasSeguidas ? PAUSA_APOS_SOBRECARGA_MS : pausa);
+    if (sobrecargasSeguidas >= maxSobrecargas || prazoFinal - Date.now() < 15_000) {
       // Para de insistir nesta rodada: junta o que sobrou numa linha por tribunal.
       const resto = new Map<string, Processo[]>();
       for (const [a, l] of lotes.slice(i)) resto.set(a, [...(resto.get(a) ?? []), ...l]);
-      const motivo = sobrecargasSeguidas >= MAX_SOBRECARGAS_SEGUIDAS
+      const motivo = sobrecargasSeguidas >= maxSobrecargas
         ? "a fonte do CNJ recusou as últimas consultas — fica para a próxima rodada, sem insistir"
         : "não coube no tempo desta rodada — fica para a próxima";
       for (const [a, l] of resto) deixarParaDepois(a, l, motivo);
       break;
+    }
+    if (opts.umPorVez) {
+      // Gira a fila: quem acabou de ser tentado vai para o fim da próxima passada, para um
+      // processo que a fonte sempre recusa não travar os outros.
+      const em = store.agora();
+      await Promise.all(lista.map((p) => store.atualizar("processos", p.id, { ultima_tentativa_cnj: em }).catch(() => null)));
     }
     let lote: ResultadoLote;
     try {
@@ -310,12 +323,13 @@ async function sincronizarUmPorUm(processos: Processo[], prazoFinal: number) {
  */
 /**
  * Processo sem verificação bem-sucedida há mais que isso entra em "atrasados" e gera alerta.
- * v2.1: a consulta roda em duas janelas por dia (6h e 18h) — entre uma e outra são 12 h, então
- * só é atraso de verdade quando uma janela inteira falhou para o processo.
+ * v2.2 (16/11/2026): os andamentos são consultados uma vez por dia, entre 4h e 10h. Um
+ * processo checado às 4h de um dia e às 9h50 do outro fica ~30h sem checagem sem que nada
+ * tenha falhado — só é atraso de verdade quando passa disso (perdeu uma manhã inteira).
  */
-export const LIMITE_ATRASO_H = 14;
-/** Agendador: já verificado há menos que isso = feito nesta janela (passadas de 20 em 20 min). */
-const JANELA_MS = 2 * 3_600_000;
+export const LIMITE_ATRASO_H = 30;
+/** Agendador: já verificado há menos que isso = feito na janela de hoje (4h–10h; 7h cobre a janela toda). */
+const JANELA_MS = 7 * 3_600_000;
 
 export type ResultadoSincronizacao = {
   verificados: number;
@@ -330,16 +344,28 @@ export type ResultadoSincronizacao = {
   nada?: boolean;
 };
 
-export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesDaJanela?: boolean } = {}): Promise<ResultadoSincronizacao> {
+/**
+ * `porPassada` (robô da madrugada): consulta só os N processos checados há mais tempo, um por
+ * vez; os demais ficam na fila para as próximas passadas (10 em 10 min, das 4h às 10h).
+ */
+export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesDaJanela?: boolean; porPassada?: number } = {}): Promise<ResultadoSincronizacao> {
   const prazoFinal = Date.now() + (opts.orcamentoMs ?? 240_000);
   let processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
   if (opts.soPendentesDaJanela) {
-    // Robô 6h/18h: a 1ª passada da janela pega todos; as seguintes (20 e 40 min depois) só
-    // o que a fonte recusou ou não coube. Sem nada pendente, não consulta nem grava log.
+    // Robô 4h–10h: cada passada pega o que ainda não foi verificado hoje (o que a fonte
+    // recusou ou ainda está na fila). Sem nada pendente, não consulta nem grava log.
     const limite = Date.now() - JANELA_MS;
     processos = processos.filter((p) => !p.ultimo_check || new Date(p.ultimo_check).getTime() < limite);
     if (!processos.length) return { verificados: 0, novas: 0, erros: [], pendentes: 0, naoVerificados: [], atrasados: [], nada: true };
   }
+  // Robô da manhã: primeiro quem nunca foi tentado hoje, depois quem foi tentado há mais tempo.
+  if (opts.porPassada) {
+    const chave = (p: Processo) => p.ultima_tentativa_cnj ?? p.ultimo_check ?? "";
+    processos = [...processos].sort((a, b) => chave(a).localeCompare(chave(b)));
+  }
+  const todos = processos;
+  const naFila = opts.porPassada ? todos.slice(opts.porPassada) : [];
+  if (opts.porPassada) processos = todos.slice(0, opts.porPassada);
   const logId = await store.iniciarSyncLog();
 
   let r: Omit<ResultadoSincronizacao, "atrasados"> = {
@@ -349,7 +375,7 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesD
   let explicacao: { explicados: number; erros: string[] } = { explicados: 0, erros: [] };
   try {
     r = provedorDeProcesso().nome === "datajud"
-      ? await sincronizarViaDataJudEmLote(processos, prazoFinal)
+      ? await sincronizarViaDataJudEmLote(processos, prazoFinal, { umPorVez: !!opts.porPassada })
       : await sincronizarUmPorUm(processos, prazoFinal);
     // v2.0: explicação dos andamentos novos (IA), com o tempo que sobrou da rodada (+40 s de
     // folga dentro do limite de 300 s da rota). O que não couber fica para a próxima rodada.
@@ -365,9 +391,14 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesD
     // Fica de fora quem nunca aparece na fonte (aviso_fonte, ex.: sigiloso): só conta como
     // checado quando o tribunal responde 100%, então com o CNJ instável parecia "atrasado"
     // sem haver nada pra buscar — gerou falso alarme em 05/11/2026 às 08h.
+    // Os que ficaram na fila (não couberam nesta passada) não são erro: entram nas próximas.
+    if (naFila.length) {
+      r.pendentes += naFila.length;
+      r.naoVerificados.push(...naFila.map((p) => p.numero_formatado));
+    }
     const limite = Date.now() - LIMITE_ATRASO_H * 3_600_000;
     const pendentes = new Set(r.naoVerificados);
-    atrasados = processos
+    atrasados = todos
       .filter((p) => !p.aviso_fonte)
       .filter((p) => pendentes.has(p.numero_formatado) && (!p.ultimo_check || new Date(p.ultimo_check).getTime() < limite))
       .map((p) => p.numero_formatado);
@@ -376,7 +407,7 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesD
       processos_verificados: r.verificados,
       novas_movimentacoes: r.novas,
       erros: r.erros.length,
-      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, parcial: r.pendentes > 0, nao_verificados: r.naoVerificados, atrasados, explicados: explicacao.explicados, erros_explicacao: explicacao.erros },
+      detalhes: { erros: r.erros, notificados, pendentes: r.pendentes, na_fila: naFila.length, parcial: r.pendentes > 0, nao_verificados: r.naoVerificados, atrasados, explicados: explicacao.explicados, erros_explicacao: explicacao.erros },
     });
   }
   return { ...r, atrasados };

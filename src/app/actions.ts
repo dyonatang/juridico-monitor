@@ -165,7 +165,7 @@ export async function sincronizarTudoAction(_: ActionState): Promise<ActionState
     const desde = ultimo ? Date.now() - new Date(ultimo.iniciado_em).getTime() : Infinity;
     if (desde < INTERVALO_MINIMO_MANUAL_MS) {
       const falta = Math.ceil((INTERVALO_MINIMO_MANUAL_MS - desde) / 60_000);
-      return { erro: `A última consulta aos tribunais começou há ${Math.floor(desde / 60_000)} min. Para não sobrecarregar a fonte do CNJ, aguarde mais ${falta} min — ou espere o robô automático (6h e 18h).` };
+      return { erro: `A última consulta aos tribunais começou há ${Math.floor(desde / 60_000)} min. Para não sobrecarregar a fonte do CNJ, aguarde mais ${falta} min — ou espere o robô automático (das 4h às 10h).` };
     }
     // Roda em segundo plano (lib/tarefas.ts); a tela acompanha e mostra o resultado no fim.
     const login = (await usuarioAtual())?.login ?? "sistema";

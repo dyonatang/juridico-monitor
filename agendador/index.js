@@ -1,12 +1,14 @@
 /**
  * Agendador dos robôs automáticos (Cloud Functions do Firebase).
  *
- * v2.1 (12/11/2026, a pedido do usuário): em vez de consultar de hora em hora — o CNJ recusava
- * (429) em quase toda rodada —, os robôs rodam em duas janelas por dia, 6h e 18h de Brasília:
- *  - roboAndamentos  → GET /api/cron/sync        (DataJud/CNJ)  às :00, :20 e :40
- *  - roboPublicacoes → GET /api/cron/publicacoes (DJEN, texto das publicações) às :10, :30 e :50
- * A 1ª passada de cada janela consulta tudo; as seguintes só o que a fonte recusou ou não
- * coube (o sistema responde na hora quando não há nada pendente).
+ * v2.2 (16/11/2026, a pedido do usuário): o DataJud/CNJ recusava (429/504) ou demorava demais
+ * nos lotes grandes das janelas 6h/18h. Agora:
+ *  - roboAndamentos  → GET /api/cron/sync        (DataJud/CNJ) de 10 em 10 min, das 4h às 9h50
+ *    (36 passadas). Cada passada consulta até 4 processos, UM POR VEZ, com pausa, e para na
+ *    primeira recusa; o resto fica para a passada seguinte. Terminado o dia, as passadas
+ *    seguintes respondem na hora ("nada pendente").
+ *  - roboPublicacoes → GET /api/cron/publicacoes (DJEN, texto das publicações) às 6h e 18h,
+ *    passadas às :10, :30 e :50 (sem mudança: essa fonte não sobrecarrega).
  *
  * Autenticação com o segredo CRON_SECRET lido do Secret Manager do próprio projeto — o mesmo
  * que o App Hosting usa. O valor nunca fica em arquivo nem passa por quem faz o deploy.
@@ -51,14 +53,14 @@ async function chamarRota(caminho) {
   return { json, corpo };
 }
 
-exports.roboAndamentos = onSchedule({ ...OPCOES, schedule: "0,20,40 6,18 * * *" }, async () => {
+exports.roboAndamentos = onSchedule({ ...OPCOES, schedule: "*/10 4-9 * * *" }, async () => {
   const { json, corpo } = await chamarRota("/api/cron/sync");
   if (json.nada) { logger.info("Robô de andamentos: nada pendente nesta janela"); return; }
   // Registro ERROR fica nos logs para diagnóstico (o e-mail é só o resumo semanal).
   // Atraso não relança a função (não adianta repetir já: a fonte está fora), só avisa.
   const atrasados = json.atrasados ?? [];
   if (atrasados.length) {
-    logger.error(`Processos sem verificação há mais de 14 horas: ${atrasados.length}`, { atrasados, corpo });
+    logger.error(`Processos sem verificação há mais de 30 horas: ${atrasados.length}`, { atrasados, corpo });
     return;
   }
   logger.info("Robô de andamentos concluído", { corpo });

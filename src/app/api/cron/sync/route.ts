@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
   const ok = compararSeguro(auth, `Bearer ${secret}`) || compararSeguro(daUrl, secret);
   if (!ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Robô 6h/18h: cada passada só consulta o que ainda não foi verificado nesta janela.
-  const resultado = await sincronizarTudo({ soPendentesDaJanela: true });
+  // Robô 4h–10h (v2.2): cada passada consulta até 4 processos ainda não verificados hoje,
+  // um por vez; o resto fica na fila para a passada seguinte (10 min depois).
+  const resultado = await sincronizarTudo({ soPendentesDaJanela: true, porPassada: 4 });
   return NextResponse.json({ ok: true, ...resultado, em: new Date().toISOString() });
 }

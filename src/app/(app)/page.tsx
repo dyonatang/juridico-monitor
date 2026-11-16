@@ -27,11 +27,11 @@ const haQuanto = (iso: string) => {
 
 // Uma rodada nunca passa de ~4 min (orçamento do cron); aberta há mais que isso = foi interrompida.
 const LIMITE_RODADA_MS = 6 * 60_000;
-// v2.1: o robô roda às 6h e às 18h (passadas às :00, :20 e :40). Entre a última passada da
-// noite (18h40) e a primeira da manhã (6h) são ~11h20 — mais de 13h sem rodada = parado.
-const LIMITE_SEM_RODADA_H = 13;
-// Mesmo valor de LIMITE_ATRASO_H em lib/sync.ts (uma janela inteira sem verificar o processo).
-const ATRASO_H = 14;
+// v2.2: andamentos de 10 em 10 min das 4h às 9h50; publicações às 6h e 18h. A maior pausa
+// normal vai das 18h50 às 4h (~9h). Mais de 12h sem rodada = agendador parado.
+const LIMITE_SEM_RODADA_H = 12;
+// Mesmo valor de LIMITE_ATRASO_H em lib/sync.ts (uma manhã inteira sem verificar o processo).
+const ATRASO_H = 30;
 
 function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   if (!log) {
@@ -45,7 +45,8 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
       </div>
     );
   }
-  const det = (log.detalhes ?? {}) as { erros?: string[]; pendentes?: number; nao_verificados?: string[]; atrasados?: string[] };
+  const det = (log.detalhes ?? {}) as { erros?: string[]; pendentes?: number; na_fila?: number; nao_verificados?: string[]; atrasados?: string[] };
+  const naFila = det.na_fila ?? 0;
   const erros = det.erros ?? [];
   const pendentes = det.pendentes ?? 0;
   const naoVerificados = det.nao_verificados ?? [];
@@ -69,7 +70,8 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   else if (interrompida) { tom = "bad"; icone = "⛔"; titulo = "A última atualização foi interrompida antes de terminar"; }
   else if (soOscilacao) { tom = "warn"; icone = "🟡"; titulo = "Fonte do CNJ sobrecarregada nesta passada — o restante fica para a próxima"; }
   else if (erros.length) { tom = "bad"; icone = "⚠️"; titulo = `Última atualização terminou com ${erros.length} erro(s)`; }
-  else if (pendentes) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
+  else if (pendentes > naFila) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
+  else if (naFila) { titulo = "Robô da manhã em andamento — consultando um processo por vez"; }
   if (!emAndamento && atrasados.length) { tom = "bad"; icone = "⚠️"; titulo = `${atrasados.length} processo(s) sem verificação há mais de ${ATRASO_H} horas`; }
 
   return (
@@ -79,18 +81,19 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         <div className="titulo">{titulo}</div>
         <div className="linha">
           {emAndamento ? "Começou" : interrompida ? "Iniciada" : "Terminou"} {haQuanto(quando)} — {fmtDataHora(quando)}
-          <span className="hint"> · robô automático às 6h e às 18h (andamentos e publicações)</span>
+          <span className="hint"> · robô automático: andamentos das 4h às 10h (um por vez) · publicações às 6h e 18h</span>
         </div>
         {!emAndamento && !interrompida && (
           <div className="linha">
             {log.processos_verificados} processo(s) verificado(s) · {log.novas_movimentacoes} andamento(s) novo(s) · {erros.length} erro(s)
-            {pendentes > 0 && ` · ${pendentes} ficaram pra próxima rodada (a fonte estava lenta)`}
+            {naFila > 0 && ` · ${naFila} na fila para as próximas passadas`}
+            {pendentes - naFila > 0 && ` · ${pendentes - naFila} ficaram pra próxima passada (a fonte estava lenta)`}
           </div>
         )}
         {soOscilacao && !atrasados.length && !emAndamento && (
           <div className="linha">
-            Normal: o robô consulta o CNJ aos poucos, um lote por vez, às 6h e às 18h, com mais duas passadas 20 e 40 minutos depois para o que
-            ficou de fora. Nada é perdido: os andamentos chegam na passada seguinte. Só preocupa se aparecer o aviso de {ATRASO_H} horas.
+            Normal: das 4h às 10h o robô consulta o CNJ um processo por vez, a cada 10 minutos, e o que a fonte recusar entra de novo na
+            passada seguinte. Nada é perdido. Só preocupa se aparecer o aviso de {ATRASO_H} horas.
           </div>
         )}
         {interrompida && (

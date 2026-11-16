@@ -57,6 +57,8 @@ export type Processo = {
   ultima_movimentacao_em: string | null;
   ultimo_check: string | null;
   ultimo_erro: string | null;
+  /** Robô da manhã: última vez que o processo foi CONSULTADO no DataJud (deu certo ou não) — gira a fila. */
+  ultima_tentativa_cnj?: string | null;
   aviso_fonte?: string | null; // observação sobre a fonte que NÃO é erro (ex.: processo sigiloso, fora do DataJud)
   djen_check?: string | null; // última consulta bem-sucedida ao Diário de Justiça Eletrônico Nacional
   djen_erro?: string | null;

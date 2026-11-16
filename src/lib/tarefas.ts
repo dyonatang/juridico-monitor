@@ -108,7 +108,7 @@ async function rodar(t: Tarefa): Promise<Partial<Tarefa>> {
   const p = t.params;
   switch (t.tipo) {
     case "sincronizar": {
-      // Em segundo plano há até 5 min; o que não couber fica para o robô (6h e 18h).
+      // Em segundo plano há até 5 min; o que não couber fica para o robô (das 4h às 10h).
       const r = await sincronizarTudo({ orcamentoMs: 200_000 });
       tudo();
       const partes = [`${r.verificados} processo(s) verificado(s)`, `${r.novas} andamento(s) novo(s)`];
