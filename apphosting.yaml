@@ -17,6 +17,11 @@ env:
   - variable: APP_GRUPO
     value: Grupo Giovanelli · Assis
     availability: [ RUNTIME ]
+  # Consultas ao CNJ (DataJud e DJEN) saem pela ponte em São Paulo (agendador/ponte-cnj.js):
+  # desde 12/11/2026 o CNJ barra o endereço deste servidor (EUA). Usa o CRON_SECRET abaixo.
+  - variable: CNJ_PONTE_URL
+    value: https://southamerica-east1-juridico-assis.cloudfunctions.net/ponteCnj
+    availability: [ RUNTIME ]
 
   - variable: DASHBOARD_USER
     secret: DASHBOARD_USER

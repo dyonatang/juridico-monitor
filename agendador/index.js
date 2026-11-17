@@ -75,6 +75,9 @@ exports.roboPublicacoes = onSchedule({ ...OPCOES, schedule: "10,30,50 6,18 * * *
 // Endereço dfv-juridico.web.app → sistema (ver portal.js).
 exports.portal = require("./portal").portal;
 
+// Consultas ao CNJ saindo de São Paulo (o CNJ barra o endereço do App Hosting nos EUA).
+exports.ponteCnj = require("./ponte-cnj").ponteCnj;
+
 /**
  * Tarefas em segundo plano (src/lib/tarefas.ts): quando a tela cria um documento em
  * `tarefas`, esta função chama o sistema para executá-lo (até 5 min). Fica na mesma região

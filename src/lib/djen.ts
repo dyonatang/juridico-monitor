@@ -14,6 +14,7 @@ import * as store from "./store";
 import { fmtData } from "./format";
 import { BASE, capaTexto, chamar, iaDisponivel, nossoLado } from "./explicador";
 import type { Processo, Publicacao } from "./types";
+import { fetchCnj } from "./cnj-fetch";
 
 const API = "https://comunicaapi.pje.jus.br/api/v1/comunicacao";
 const PAUSA_MS = 3_500;
@@ -60,10 +61,11 @@ async function buscarPagina(numero: string, pagina: number, desde?: string): Pro
   }
   let res: Response;
   try {
-    res = await fetch(`${API}?${qs}`, {
+    // Pela ponte de São Paulo (lib/cnj-fetch.ts): o DJEN barra o endereço do App Hosting (403).
+    res = await fetchCnj(`${API}?${qs}`, {
       headers: { Accept: "application/json", "User-Agent": "JuridicoMonitor/2.1" },
-      cache: "no-store",
       signal: AbortSignal.timeout(30_000),
+      timeoutMs: 25_000,
     });
   } catch (e) {
     const nome = e instanceof Error ? e.name : "";

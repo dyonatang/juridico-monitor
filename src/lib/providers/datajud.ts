@@ -1,5 +1,6 @@
 import { somenteDigitos, tribunalDoCnj } from "@/lib/format";
 import type { ProcessoProvider, ProcessoRemoto, MovimentacaoRemota } from "./types";
+import { fetchCnj } from "../cnj-fetch";
 
 /**
  * API Pública do DataJud (CNJ).
@@ -138,15 +139,16 @@ export class DataJudProvider implements ProcessoProvider {
       const limite = Math.min(timeoutMs, restante);
       let res: Response;
       try {
-        res = await fetch(url, {
+        // Pela ponte de São Paulo (lib/cnj-fetch.ts): o CNJ recusa quase tudo vindo do App Hosting (EUA).
+        res = await fetchCnj(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `APIKey ${process.env.DATAJUD_API_KEY || CHAVE_PUBLICA_CNJ}`,
           },
           body: JSON.stringify(corpo),
-          cache: "no-store",
           signal: AbortSignal.timeout(limite),
+          timeoutMs: limite - 2_000,
         });
       } catch (e) {
         const nome = e instanceof Error ? e.name : "";
