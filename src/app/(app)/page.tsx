@@ -27,10 +27,10 @@ const haQuanto = (iso: string) => {
 
 // Uma rodada nunca passa de ~4 min (orçamento do cron); aberta há mais que isso = foi interrompida.
 const LIMITE_RODADA_MS = 6 * 60_000;
-// v2.2: andamentos de 10 em 10 min das 4h às 9h50; publicações às 6h e 18h. A maior pausa
-// normal vai das 18h50 às 4h (~9h). Mais de 12h sem rodada = agendador parado.
+// v2.3: andamentos de 10 em 10 min das 4h às 9h50 e das 19h às 22h50; publicações às 6h e 18h.
+// A maior pausa normal vai das 10h às 18h (~8h). Mais de 12h sem rodada = agendador parado.
 const LIMITE_SEM_RODADA_H = 12;
-// Mesmo valor de LIMITE_ATRASO_H em lib/sync.ts (uma manhã inteira sem verificar o processo).
+// Mesmo valor de LIMITE_ATRASO_H em lib/sync.ts (duas janelas do robô seguidas sem verificar o processo).
 const ATRASO_H = 30;
 
 function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
@@ -71,7 +71,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
   else if (soOscilacao) { tom = "warn"; icone = "🟡"; titulo = "Fonte do CNJ sobrecarregada nesta passada — o restante fica para a próxima"; }
   else if (erros.length) { tom = "bad"; icone = "⚠️"; titulo = `Última atualização terminou com ${erros.length} erro(s)`; }
   else if (pendentes > naFila) { tom = "warn"; icone = "🟡"; titulo = "Última atualização concluída em parte"; }
-  else if (naFila) { titulo = "Robô da manhã em andamento — consultando um processo por vez"; }
+  else if (naFila) { titulo = "Robô em andamento — consultando um processo por vez"; }
   if (!emAndamento && atrasados.length) { tom = "bad"; icone = "⚠️"; titulo = `${atrasados.length} processo(s) sem verificação há mais de ${ATRASO_H} horas`; }
 
   return (
@@ -81,7 +81,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         <div className="titulo">{titulo}</div>
         <div className="linha">
           {emAndamento ? "Começou" : interrompida ? "Iniciada" : "Terminou"} {haQuanto(quando)} — {fmtDataHora(quando)}
-          <span className="hint"> · robô automático: andamentos das 4h às 10h (um por vez) · publicações às 6h e 18h</span>
+          <span className="hint"> · robô automático: andamentos das 4h às 10h e das 19h às 23h (um por vez) · publicações às 6h e 18h</span>
         </div>
         {!emAndamento && !interrompida && (
           <div className="linha">
@@ -92,7 +92,7 @@ function StatusAtualizacao({ log }: { log: store.SyncLog | null }) {
         )}
         {soOscilacao && !atrasados.length && !emAndamento && (
           <div className="linha">
-            Normal: das 4h às 10h o robô consulta o CNJ um processo por vez, a cada 10 minutos, e o que a fonte recusar entra de novo na
+            Normal: das 4h às 10h e das 19h às 23h o robô consulta o CNJ um processo por vez, a cada 10 minutos, e o que a fonte recusar entra de novo na
             passada seguinte. Nada é perdido. Só preocupa se aparecer o aviso de {ATRASO_H} horas.
           </div>
         )}

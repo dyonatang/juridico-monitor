@@ -228,9 +228,13 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
   }
   // `processos` já vem do checado há mais tempo para o mais recente: o lote com o processo
   // mais "velho" vai primeiro, então quem ficou de fora numa rodada é o primeiro da próxima.
-  const lotes = [...grupos]
-    .flatMap(([alias, lista]) => fatiar(lista, maxPorConsulta).map((parte) => [alias, parte] as const))
-    .sort(([, a], [, b]) => (a[0].ultimo_check ?? "").localeCompare(b[0].ultimo_check ?? ""));
+  // No robô automático (um por vez) a ordem já vem pronta de sincronizarTudo (fila girada e
+  // intercalada por tribunal) e é mantida.
+  const lotes: (readonly [string, Processo[]])[] = opts.umPorVez
+    ? processos.filter((p) => p.tribunal || tribunalDoCnj(p.numero_cnj)).map((p) => [(p.tribunal || tribunalDoCnj(p.numero_cnj))!, [p]] as const)
+    : [...grupos]
+        .flatMap(([alias, lista]) => fatiar(lista, maxPorConsulta).map((parte) => [alias, parte] as const))
+        .sort(([, a], [, b]) => (a[0].ultimo_check ?? "").localeCompare(b[0].ultimo_check ?? ""));
 
   const deixarParaDepois = (alias: string, lista: readonly Processo[], motivo: string) => {
     erros.push(`${alias.toUpperCase()} (${lista.length} processo(s) não verificados): ${motivo}`);
@@ -239,14 +243,24 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
   };
 
   let sobrecargasSeguidas = 0;
+  // Robô automático (v2.3, 18/11/2026): a recusa vale por tribunal. Se o DataJud do TJES recusa,
+  // os outros processos do TJES ficam para a próxima passada, mas TRT17/TJSP seguem nesta.
+  const recusados = new Set<string>();
+  const puladosPorRecusa = new Map<string, Processo[]>();
+  let consultou = false;
   for (let i = 0; i < lotes.length; i++) {
     const [alias, lista] = lotes[i];
-    if (i > 0) await espera(sobrecargasSeguidas ? PAUSA_APOS_SOBRECARGA_MS : pausa);
-    if (sobrecargasSeguidas >= maxSobrecargas || prazoFinal - Date.now() < 15_000) {
+    if (opts.umPorVez && recusados.has(alias)) {
+      puladosPorRecusa.set(alias, [...(puladosPorRecusa.get(alias) ?? []), ...lista]);
+      continue;
+    }
+    if (consultou) await espera(sobrecargasSeguidas ? PAUSA_APOS_SOBRECARGA_MS : pausa);
+    if ((!opts.umPorVez && sobrecargasSeguidas >= maxSobrecargas) || prazoFinal - Date.now() < 15_000) {
       // Para de insistir nesta rodada: junta o que sobrou numa linha por tribunal.
       const resto = new Map<string, Processo[]>();
-      for (const [a, l] of lotes.slice(i)) resto.set(a, [...(resto.get(a) ?? []), ...l]);
-      const motivo = sobrecargasSeguidas >= maxSobrecargas
+      for (const [a, l] of lotes.slice(i)) if (!recusados.has(a)) resto.set(a, [...(resto.get(a) ?? []), ...l]);
+      for (const [a, l] of lotes.slice(i)) if (recusados.has(a)) puladosPorRecusa.set(a, [...(puladosPorRecusa.get(a) ?? []), ...l]);
+      const motivo = !opts.umPorVez && sobrecargasSeguidas >= maxSobrecargas
         ? "a fonte do CNJ recusou as últimas consultas — fica para a próxima rodada, sem insistir"
         : "não coube no tempo desta rodada — fica para a próxima";
       for (const [a, l] of resto) deixarParaDepois(a, l, motivo);
@@ -259,11 +273,13 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
       await Promise.all(lista.map((p) => store.atualizar("processos", p.id, { ultima_tentativa_cnj: em }).catch(() => null)));
     }
     let lote: ResultadoLote;
+    consultou = true;
     try {
       lote = await datajud.consultarLote(alias, lista.map((p) => p.numero_cnj), { prazoFinal });
       sobrecargasSeguidas = 0;
     } catch (e) {
       sobrecargasSeguidas++;
+      if (opts.umPorVez) recusados.add(alias);
       deixarParaDepois(alias, lista, e instanceof Error ? e.message : String(e));
       continue;
     }
@@ -289,7 +305,23 @@ async function sincronizarViaDataJudEmLote(processos: Processo[], prazoFinal: nu
       });
     }
   }
+  for (const [a, l] of puladosPorRecusa) {
+    deixarParaDepois(a, l, "a fonte do CNJ recusou as últimas consultas — fica para a próxima rodada, sem insistir");
+  }
   return { verificados, novas, erros, pendentes, naoVerificados };
+}
+
+/** Intercala os tribunais (TJES, TRT17, TJSP, TJES, ...) mantendo a ordem de cada um. */
+function intercalarTribunais(processos: Processo[]): Processo[] {
+  const filas = new Map<string, Processo[]>();
+  for (const p of processos) {
+    const t = p.tribunal || tribunalDoCnj(p.numero_cnj) || "?";
+    filas.set(t, [...(filas.get(t) ?? []), p]);
+  }
+  const saida: Processo[] = [];
+  const listas = [...filas.values()];
+  for (let i = 0; saida.length < processos.length; i++) for (const l of listas) if (l[i]) saida.push(l[i]);
+  return saida;
 }
 
 const PAUSA_ENTRE_CONSULTAS_MS = 1200;
@@ -326,9 +358,15 @@ async function sincronizarUmPorUm(processos: Processo[], prazoFinal: number) {
  * v2.2 (16/11/2026): os andamentos são consultados uma vez por dia, entre 4h e 10h. Um
  * processo checado às 4h de um dia e às 9h50 do outro fica ~30h sem checagem sem que nada
  * tenha falhado — só é atraso de verdade quando passa disso (perdeu uma manhã inteira).
+ * v2.3 (18/11/2026): segunda janela à noite (19h–23h) — o DataJud do TJES recusou quase tudo de
+ * manhã e respondeu bem às 19h35. Com duas janelas, 30h = perdeu duas janelas seguidas.
  */
 export const LIMITE_ATRASO_H = 30;
-/** Agendador: já verificado há menos que isso = feito na janela de hoje (4h–10h; 7h cobre a janela toda). */
+/**
+ * Agendador: já verificado há menos que isso = feito na janela atual (manhã 4h–10h ou noite
+ * 19h–23h; 7h cobre cada janela inteira e é menor que o intervalo de 9h entre 10h e 19h, então
+ * a janela da noite volta a consultar tudo).
+ */
 const JANELA_MS = 7 * 3_600_000;
 
 export type ResultadoSincronizacao = {
@@ -346,13 +384,13 @@ export type ResultadoSincronizacao = {
 
 /**
  * `porPassada` (robô da madrugada): consulta só os N processos checados há mais tempo, um por
- * vez; os demais ficam na fila para as próximas passadas (10 em 10 min, das 4h às 10h).
+ * vez; os demais ficam na fila para as próximas passadas (10 em 10 min, das 4h às 10h e das 19h às 23h).
  */
 export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesDaJanela?: boolean; porPassada?: number } = {}): Promise<ResultadoSincronizacao> {
   const prazoFinal = Date.now() + (opts.orcamentoMs ?? 240_000);
   let processos = (await store.listarProcessos({ apenasAtivos: true })).sort((a, b) => (a.ultimo_check ?? "").localeCompare(b.ultimo_check ?? ""));
   if (opts.soPendentesDaJanela) {
-    // Robô 4h–10h: cada passada pega o que ainda não foi verificado hoje (o que a fonte
+    // Robô 4h–10h e 19h–23h: cada passada pega o que ainda não foi verificado nesta janela (o que a fonte
     // recusou ou ainda está na fila). Sem nada pendente, não consulta nem grava log.
     const limite = Date.now() - JANELA_MS;
     processos = processos.filter((p) => !p.ultimo_check || new Date(p.ultimo_check).getTime() < limite);
@@ -361,7 +399,9 @@ export async function sincronizarTudo(opts: { orcamentoMs?: number; soPendentesD
   // Robô da manhã: primeiro quem nunca foi tentado hoje, depois quem foi tentado há mais tempo.
   if (opts.porPassada) {
     const chave = (p: Processo) => p.ultima_tentativa_cnj ?? p.ultimo_check ?? "";
-    processos = [...processos].sort((a, b) => chave(a).localeCompare(chave(b)));
+    // Intercalado por tribunal: cada passada tenta um de cada antes de repetir o mesmo tribunal,
+    // para um tribunal sobrecarregado não ocupar a passada inteira.
+    processos = intercalarTribunais([...processos].sort((a, b) => chave(a).localeCompare(chave(b))));
   }
   const todos = processos;
   const naFila = opts.porPassada ? todos.slice(opts.porPassada) : [];

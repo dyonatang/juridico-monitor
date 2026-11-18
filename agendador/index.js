@@ -7,6 +7,9 @@
  *    (36 passadas). Cada passada consulta até 4 processos, UM POR VEZ, com pausa, e para na
  *    primeira recusa; o resto fica para a passada seguinte. Terminado o dia, as passadas
  *    seguintes respondem na hora ("nada pendente").
+ *    v2.3 (18/11/2026, a pedido do usuário): + janela da noite, das 19h às 22h50 (24 passadas) —
+ *    de manhã o DataJud do TJES recusou quase tudo e às 19h35 respondeu bem. A recusa de um
+ *    tribunal só adia os processos desse tribunal; os outros seguem na mesma passada.
  *  - roboPublicacoes → GET /api/cron/publicacoes (DJEN, texto das publicações) às 6h e 18h,
  *    passadas às :10, :30 e :50 (sem mudança: essa fonte não sobrecarrega).
  *
@@ -53,7 +56,7 @@ async function chamarRota(caminho) {
   return { json, corpo };
 }
 
-exports.roboAndamentos = onSchedule({ ...OPCOES, schedule: "*/10 4-9 * * *" }, async () => {
+exports.roboAndamentos = onSchedule({ ...OPCOES, schedule: "*/10 4-9,19-22 * * *" }, async () => {
   const { json, corpo } = await chamarRota("/api/cron/sync");
   if (json.nada) { logger.info("Robô de andamentos: nada pendente nesta janela"); return; }
   // Registro ERROR fica nos logs para diagnóstico (o e-mail é só o resumo semanal).
